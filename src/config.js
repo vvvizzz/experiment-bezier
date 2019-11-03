@@ -1,0 +1,15 @@
+module.exports = {
+  canvasStartingPoint: [10, 10],
+  defaultCurveHeight: 80,
+  defaultCurveWidth: 400,
+  defaultLineWidth: 1,
+  defaultLineColor: 'black',
+  defaultRefLineYOffset: 10,
+  refLineColor: 'blue',
+  refLineWidth: 3,
+  refsDistance: 30,
+  refHorizontalLineColor: 'red',
+  refHorizontalLineWidth: 4,
+  connectLineColor: 'green',
+  connectLineWidth: 3,
+};
