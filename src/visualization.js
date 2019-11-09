@@ -9,6 +9,14 @@ const width = 2000;
 const height = 2000;
 
 const refsArray = [];
+let mainCurvePoints = [];
+
+const pointerCircleCoords = {
+  x: -100,
+  y: -100
+};
+
+const targetPoints = [];
 
 export default function draw() {
   const canvas = d3.select('.chart')
@@ -55,6 +63,30 @@ export default function draw() {
 
   addCurve(config.canvasStartingPoint);
 
+  const mainCurveStartingPoint = [
+    config.canvasStartingPoint[0],
+    refsArray[refsArray.length - 1][3][1] + config.dividerOffset * 2
+  ];
+
+  mainCurvePoints = [
+    [
+      mainCurveStartingPoint[0],
+      mainCurveStartingPoint[1] + config.defaultRefLineYOffset
+    ],
+    [
+      mainCurveStartingPoint[0] + config.defaultCurveWidth,
+      mainCurveStartingPoint[1] + config.defaultRefLineYOffset
+    ],
+    [
+      mainCurveStartingPoint[0] + config.defaultCurveWidth,
+      mainCurveStartingPoint[1] + config.defaultCurveHeight + config.defaultRefLineYOffset
+    ],
+    [
+      mainCurveStartingPoint[0] + config.defaultCurveWidth * 2,
+      mainCurveStartingPoint[1] + config.defaultCurveHeight + config.defaultRefLineYOffset
+    ]
+  ];
+
   function addNewCurve() {
     const last = refsArray[refsArray.length - 1];
 
@@ -67,21 +99,120 @@ export default function draw() {
   }
 
   function update() {
+    context.clearRect(0, 0, width, height);
+
     refsArray.forEach((points, index) => {
       const curve = new Bezier(points.flat());
 
-      if (!index) {
-        context.clearRect(0, 0, width, height);
-      }
-
-      drawSkeleton(context, curve, index);
+      drawSkeleton(context, curve, refsArray[index]);
     });
+
+    // divider
+    const dividerStartCoords = {
+      x: config.canvasStartingPoint[0],
+      y: refsArray[refsArray.length - 1][3][1] + config.dividerOffset
+    };
+
+    const dividerEndCoords = {
+      x: width,
+      y: refsArray[refsArray.length - 1][3][1] + config.dividerOffset
+    };
+
+    drawLine(context, dividerStartCoords, dividerEndCoords, {
+      color: config.dividerLineColor, width: config.dividerLineWidth
+    });
+
+    // mainCurve
+    const mainCurve = new Bezier(mainCurvePoints.flat());
+    drawSkeleton(context, mainCurve, mainCurvePoints, true);
+
+    // pointer circle
+    drawCircle(
+      context,
+      pointerCircleCoords,
+      4,
+      {
+        width: config.circleWidth,
+        color: config.circleColor
+      }
+    );
+
+    if (targetPoints.length) {
+      targetPoints.forEach((x) => {
+        const options = {
+          cubicBezier: {
+            xs:[
+              mainCurvePoints[0][0],
+              mainCurvePoints[1][0],
+              mainCurvePoints[2][0],
+              mainCurvePoints[3][0]
+            ],
+            ys:[
+              mainCurvePoints[0][1],
+              mainCurvePoints[1][1],
+              mainCurvePoints[2][1],
+              mainCurvePoints[3][1]
+            ]
+          },
+          x
+        };
+
+        const y = getValOnCubicBezier_givenXorX(options);
+
+        if (!y) { return false; }
+
+        drawCircle(
+          context,
+          {
+            x,
+            y
+          },
+          3,
+          {
+            width: config.targetPointWidth,
+            color: config.targetPointColor
+          }
+        );
+      });
+    }
   }
 
   d3.select(context.canvas)
     .call(drag, {radius: 20, refsArray: refsArray, update})
     .call(update)
     .node();
+
+  const throttledMouseMove = function handleMouseMove(){
+    var xy = d3.mouse(this);
+
+    var color = context.getImageData(xy[0], xy[1], 1, 1).data;
+
+    if (color[2] > 135 && color[2] < 145) {
+      if (pointerCircleCoords.x !== xy[0] && pointerCircleCoords.y !== xy[1]) {
+        pointerCircleCoords.x = xy[0];
+        pointerCircleCoords.y = xy[1];
+        update();
+      }
+    } else if (pointerCircleCoords.x !== -100) {
+      pointerCircleCoords.x = -100;
+      pointerCircleCoords.y = -100;
+      update();
+    }
+  };
+
+  d3.select(context.canvas)
+    .on('mousemove', throttledMouseMove)
+    .on('click', handleClick);
+
+  function handleClick() {
+    var xy = d3.mouse(this);
+
+    if (pointerCircleCoords.x > 0) {
+      targetPoints[0] = xy[0];
+
+      update();
+    }
+  }
 
   function drag(selection, {refsArray, radius, update}) {
     function dragsubject() {
@@ -91,14 +222,16 @@ export default function draw() {
       let isRightHandler = false;
       let isTuner = false;
       let setIndex = null;
+      let isMainCurve
 
-      refsArray.forEach((points, index) => {
+      refsArray.concat([mainCurvePoints]).forEach((points, index) => {
         for (const p of points) {
           let r = Math.hypot(d3.event.x - p[0], d3.event.y - p[1]);
           if (r < R) {
             R = r;
             S = p;
 
+            isMainCurve = mainCurvePoints === points;
             isLeftHandler = points.indexOf(p) === 0;
             isRightHandler = points.indexOf(p) === 3;
             isTuner = points.indexOf(p) === 1 || points.indexOf(p) === 2;
@@ -107,48 +240,80 @@ export default function draw() {
         }
       });
 
-      return {x: S[0], y: S[1], point: S, isLeftHandler, isRightHandler, isTuner, setIndex};
+      if (!S) return false;
+
+      return {
+        x: S[0],
+        y: S[1],
+        point: S,
+        isLeftHandler,
+        isRightHandler,
+        isTuner,
+        setIndex,
+        isMainCurve
+      };
     }
 
     function dragged() {
-      const { isLeftHandler, isRightHandler, isTuner, setIndex } = d3.event.subject;
-      const maxTop = refsArray[setIndex][3][1];
+      const {
+        isLeftHandler,
+        isRightHandler,
+        isMainCurve,
+        isTuner,
+        setIndex,
+      } = d3.event.subject;
+
+      const array = isMainCurve ? mainCurvePoints : refsArray[setIndex];
+
+      if (!array) return false;
+
+      const maxTop = array[3][1];
 
       if (!isLeftHandler && !isRightHandler) {
-        refsArray[setIndex][1][0] = clamp(d3.event.x, refsArray[setIndex][0][0], refsArray[setIndex][3][0]);
-        refsArray[setIndex][2][0] = clamp(d3.event.x, refsArray[setIndex][0][0], refsArray[setIndex][3][0]);
+        array[1][0] = clamp(d3.event.x, array[0][0], array[3][0]);
+        array[2][0] = clamp(d3.event.x, array[0][0], array[3][0]);
       }
 
       if (!isTuner) {
         let yCoord = null;
 
         if (isLeftHandler) {
-          yCoord = clamp(d3.event.y, refsArray[setIndex].topOffset, refsArray[setIndex][3][1]);
-          refsArray[setIndex][1][1] = yCoord;
+          yCoord = clamp(d3.event.y, array.topOffset, array[3][1]);
+          array[1][1] = yCoord;
         }
 
         if (isRightHandler) {
-          yCoord = clamp(d3.event.y, refsArray[setIndex][0][1], Infinity);
-          refsArray[setIndex][2][1] = yCoord;
+          yCoord = clamp(d3.event.y, array[0][1], Infinity);
+          array[2][1] = yCoord;
 
-          refsArray[setIndex][3][0] = clamp(d3.event.x, refsArray[setIndex][2][0], width);
+          const leftEdge = targetPoints.length
+            ? targetPoints[0] > array[2][0] ? targetPoints[0] : array[2][0]
+            : array[2][0];
+
+          array[3][0] = clamp(d3.event.x, leftEdge, width);
         }
 
         d3.event.subject.point[1] = yCoord;
       }
 
-      if (isRightHandler && setIndex !== refsArray.length - 1) {
-        for (let i = setIndex + 1; i < refsArray.length; i++) {
-          for (let j = 0; j < refsArray[i].length; j++) {
-            refsArray[i][j][1] += d3.event.subject.point[1] - maxTop;
+      if (!isMainCurve) {
+        if (isRightHandler && setIndex !== refsArray.length - 1) {
+          for (let i = setIndex + 1; i < refsArray.length; i++) {
+            for (let j = 0; j < refsArray[i].length; j++) {
+              refsArray[i][j][1] += d3.event.subject.point[1] - maxTop;
+            }
+
+            refsArray[i].topOffset = refsArray[i - 1][3][1] + config.refsDistance;
+          }
+        }
+
+        if (isRightHandler) {
+          for (let k = 0; k < mainCurvePoints.length; k++) {
+            mainCurvePoints[k][1] += d3.event.subject.point[1] - maxTop;
           }
 
-          refsArray[i].topOffset = refsArray[i - 1][3][1] + config.refsDistance;
+          button.style('top', `${ refsArray[refsArray.length - 1][3][1] + 30 }px`);
         }
-      }
-
-      if (isRightHandler) {
-        button.style('top', `${ refsArray[refsArray.length - 1][3][1] + 30 }px`);
       }
     }
 
@@ -168,10 +333,20 @@ export default function draw() {
     ctx.stroke();
   }
 
-  function drawCircle(ctx, p, r) {
+  function drawCircle(ctx, p, r, options) {
+    if (options) {
+      ctx.lineWidth = options.width;
+      ctx.strokeStyle = options.color;
+    }
+
     ctx.beginPath();
     ctx.arc(p.x, p.y, r, 0, 2*Math.PI);
     ctx.stroke();
+
+    if (options) {
+      ctx.lineWidth = config.defaultLineColor;
+      ctx.strokeStyle = config.defaultLineWidth;
+    }
   }
 
   function drawPoints(ctx, points, options) {
@@ -179,18 +354,18 @@ export default function draw() {
     points.forEach(p => drawCircle(ctx, p, 6));
   }
 
-  function drawSkeleton(ctx, curve, index) {
+  function drawSkeleton(ctx, curve, array, isMain) {
     var pts = curve.points;
-    
+
     // horizontal line
     const horizontalLineStartCoords = {
       x: pts[0].x,
-      y: refsArray[index].topOffset
+      y: array.topOffset
     };
 
     const horizontalLineEndCoords = {
       x: width,
-      y: refsArray[index].topOffset
+      y: array.topOffset
     };
 
     const horizontalLineConfig = {
@@ -208,7 +383,7 @@ export default function draw() {
 
     // handler circles
     drawPoints(ctx, pts, {color: 'black'});
-    
+
     // left connect line
     const leftConnectLineStartCoords = horizontalLineStartCoords;
     const leftConnectLineEndCoords = pts[0];
@@ -219,7 +394,7 @@ export default function draw() {
     };
 
     drawLine(ctx, leftConnectLineStartCoords, leftConnectLineEndCoords, connectLineConfig);
-    
+
     // right connect line
     const rightConnectLineStartCoords = {
       x: pts[3].x,
@@ -238,36 +413,85 @@ export default function draw() {
     };
 
     drawLine(ctx, horizontalConnectLineStartCoords, horizontalConnectLineEndCoords, connectLineConfig);
-    
+
     // curve
-    drawCurve(context, curve);
+    drawCurve(context, curve, isMain);
   }
 
-  function drawCurve(ctx, curve, offset) {
-    ctx.lineWidth = config.refLineWidth;
-    ctx.strokeStyle = config.refLineColor;
+  function drawCurve(ctx, curve, isMain) {
+    ctx.lineWidth = config.refLineWidth * (isMain ? 2 : 1);
+    ctx.strokeStyle = isMain ? config.mainLineColor : config.refLineColor;
 
-    offset = offset || { x:0, y:0 };
-    var ox = offset.x;
-    var oy = offset.y;
     ctx.beginPath();
-    var p = curve.points, i;
-    ctx.moveTo(p[0].x + ox, p[0].y + oy);
+    var p = curve.points;
+    ctx.moveTo(p[0].x, p[0].y);
     if (p.length === 3) {
       ctx.quadraticCurveTo(
-        p[1].x + ox, p[1].y + oy,
-        p[2].x + ox, p[2].y + oy
+        p[1].x, p[1].y,
+        p[2].x, p[2].y
       );
     }
     if (p.length === 4) {
       ctx.bezierCurveTo(
-        p[1].x + ox, p[1].y + oy,
-        p[2].x + ox, p[2].y + oy,
-        p[3].x + ox, p[3].y + oy
+        p[1].x, p[1].y,
+        p[2].x, p[2].y,
+        p[3].x, p[3].y
       );
     }
     ctx.stroke();
     ctx.closePath();
     ctx.lineWidth = config.defaultLineWidth;
+  }
+}
+
+function getValOnCubicBezier_givenXorX(options) {
+  /*
+  options = {
+   cubicBezier: {xs:[x1, x2, x3, x4], ys:[y1, y2, y3, y4]};
+   x: NUMBER //this is the known x, if provide this must not provide y, a number for x will be returned
+   y: NUMBER //this is the known y, if provide this must not provide x, a number for y will be returned
+  }
+  */
+  if ('x' in options && 'y' in options) {
+    throw new Error('cannot provide known x and known y');
+  }
+  if (!('x' in options) && !('y' in options)) {
+    throw new Error('must provide EITHER a known x OR a known y');
+  }
+
+  var x1 = options.cubicBezier.xs[0];
+  var x2 = options.cubicBezier.xs[1];
+  var x3 = options.cubicBezier.xs[2];
+  var x4 = options.cubicBezier.xs[3];
+
+  var y1 = options.cubicBezier.ys[0];
+  var y2 = options.cubicBezier.ys[1];
+  var y3 = options.cubicBezier.ys[2];
+  var y4 = options.cubicBezier.ys[3];
+
+  var LUT = {
+    x: [],
+    y: []
+  }
+
+  for(var i=0; i<5000; i++) {
+    var t = i/5000;
+    LUT.x.push( (1-t)*(1-t)*(1-t)*x1 + 3*(1-t)*(1-t)*t*x2 + 3*(1-t)*t*t*x3 + t*t*t*x4 );
+    LUT.y.push( (1-t)*(1-t)*(1-t)*y1 + 3*(1-t)*(1-t)*t*y2 + 3*(1-t)*t*t*y3 + t*t*t*y4 );
+  }
+
+  if ('x' in options) {
+    var knw = 'x'; //known
+    var unk = 'y'; //unknown
+  } else {
+    var knw = 'y'; //known
+    var unk = 'x'; //unknown
+  }
+
+  for (var i=1; i<5000; i++) {
+    if (options[knw] >= LUT[knw][i] && options[knw] <= LUT[knw][i+1]) {
+      var linearInterpolationValue = options[knw] - LUT[knw][i];
+      return LUT[unk][i] + linearInterpolationValue;
+    }
   }
 }
