@@ -5,18 +5,22 @@ import clamp from 'lodash/clamp';
 
 import './styles.styl';
 
-const width = 2000;
-const height = 2000;
+const width = 4000;
+const height = 4000;
 
 const refsArray = [];
 let mainCurvePoints = [];
+let collectionsArray = [];
+let targetLineCoords = null;
+let resultsPoints = [];
+const targetPoints = [];
+let curves = [];
+
 
 const pointerCircleCoords = {
   x: -100,
   y: -100
 };
-
-const targetPoints = [];
 
 export default function draw() {
   const canvas = d3.select('.chart')
@@ -27,8 +31,14 @@ export default function draw() {
     .node();
 
   const button = d3.select('.plus-button');
+  const saveButton = d3.select('.save');
 
   const context = canvas.getContext('2d');
+
+  saveButton.on('click', () => {
+    const image = canvas.toDataURL("image/png").replace("image/png", "image/octet-stream");
+    window.location.href = image;
+  });
 
   function addCurve(startingPoint) {
     const currentPoints = [
@@ -53,6 +63,11 @@ export default function draw() {
     currentPoints.topOffset = startingPoint[1];
 
     refsArray.push(currentPoints);
+
+    for (let k = 0; k < mainCurvePoints.length; k++) {
+      mainCurvePoints[k][1] += currentPoints[3][1] - currentPoints[0][1] + config.refsDistance
+        + config.defaultRefLineYOffset;
+    }
 
     button
       .style('top', `${ currentPoints[3][1] + 20 }px`);
@@ -101,8 +116,11 @@ export default function draw() {
   function update() {
     context.clearRect(0, 0, width, height);
 
+    curves.length = 0;
+
     refsArray.forEach((points, index) => {
       const curve = new Bezier(points.flat());
+      curves.push(curve);
 
       drawSkeleton(context, curve, refsArray[index]);
     });
@@ -122,23 +140,23 @@ export default function draw() {
       color: config.dividerLineColor, width: config.dividerLineWidth
     });
 
-    // mainCurve
-    const mainCurve = new Bezier(mainCurvePoints.flat());
-    drawSkeleton(context, mainCurve, mainCurvePoints, true);
-
     // pointer circle
     drawCircle(
       context,
       pointerCircleCoords,
-      4,
+      5,
       {
         width: config.circleWidth,
         color: config.circleColor
       }
     );
 
+    // mainCurve
+    const mainCurve = new Bezier(mainCurvePoints.flat());
+    drawSkeleton(context, mainCurve, mainCurvePoints, true);
+
     if (targetPoints.length) {
-      targetPoints.forEach((x) => {
+      targetPoints.forEach((x, index) => {
         const options = {
           cubicBezier: {
             xs:[
@@ -167,12 +185,182 @@ export default function draw() {
             x,
             y
           },
-          3,
+          4,
           {
-            width: config.targetPointWidth,
+            width: config.targetPointWidth * 2,
             color: config.targetPointColor
           }
         );
+
+        context.font = "10px Arial";
+        context.fillText(`${ x },${ y.toFixed(2) }`,x + 5,y - 5);
+
+        if (index === 0) {
+          targetLineCoords = [{
+            x,
+            y,
+          },{
+            x,
+            y: y + refsArray[0][0][1] - refsArray[0].topOffset
+          }];
+
+          for(let i = refsArray[0][0][0]; i <= refsArray[0][3][0]; i++) {
+            const distanceOptions = {
+              cubicBezier: {
+                xs:[
+                  refsArray[0][0][0],
+                  refsArray[0][1][0],
+                  refsArray[0][2][0],
+                  refsArray[0][3][0]
+                ],
+                ys:[
+                  refsArray[0][0][1],
+                  refsArray[0][1][1],
+                  refsArray[0][2][1],
+                  refsArray[0][3][1]
+                ]
+              },
+              x: i
+            };
+
+            const distance = getValOnCubicBezier_givenXorX(distanceOptions) - refsArray[0].topOffset;
+
+            const coordsOptions = {
+              ...options,
+              x: x + i - config.canvasStartingPoint[0],
+            };
+
+            let bezierY = getValOnCubicBezier_givenXorX(coordsOptions);
+
+            if (!bezierY) {
+              bezierY = mainCurvePoints[3][1];
+            }
+
+            if (distance) {
+              targetLineCoords.push({
+                x: x + i - config.canvasStartingPoint[0],
+                y: bezierY + distance
+              });
+            }
+          }
+
+          targetLineCoords.push({
+            x: width,
+            y: targetLineCoords[targetLineCoords.length - 2].y
+          });
+
+          var line = d3.line()
+            .x(d => d.x)
+            .y(d => d.y)
+            .curve(d3.curveLinear)
+            .context(context);
+
+          context.beginPath();
+          line(targetLineCoords);
+          context.lineWidth = config.targetLineWidth;
+          context.strokeStyle = config.targetLineColor;
+          context.stroke();
+        }
+      });
+    }
+
+    if (resultsPoints.length) {
+      collectionsArray = [];
+
+      resultsPoints.forEach((xPos, itemIndex) => {
+        let collection = targetLineCoords;
+
+        if (itemIndex) {
+          collection = collectionsArray[itemIndex - 1];
+        }
+        const index = Math.ceil(xPos) - collection[0].x + 1;
+
+        const pointCoords = {
+          x: xPos,
+          y: collection[index].y
+        };
+
+        drawCircle(
+          context,
+          pointCoords,
+          4,
+          {
+            width: config.targetPointWidth * 2,
+            color: config.targetPointColor
+          }
+        );
+
+        context.font = "10px Arial";
+
+        context.fillText(
+          `${ pointCoords.x },${ pointCoords.y.toFixed(2) }`,
+          pointCoords.x + 5,
+          pointCoords.y - 5
+        );
+
+        const iteratorSource = refsArray[itemIndex + 1];
+
+        const resultLineCoords = [
+          pointCoords,
+          {
+            x: pointCoords.x,
+            y: pointCoords.y + iteratorSource[0][1] - iteratorSource.topOffset
+          }
+        ];
+
+        for(let i = iteratorSource[0][0]; i < iteratorSource[3][0]; i++) {
+          const distanceOptions = {
+            cubicBezier: {
+              xs:[
+                iteratorSource[0][0],
+                iteratorSource[1][0],
+                iteratorSource[2][0],
+                iteratorSource[3][0]
+              ],
+              ys:[
+                iteratorSource[0][1],
+                iteratorSource[1][1],
+                iteratorSource[2][1],
+                iteratorSource[3][1]
+              ]
+            },
+            x: i
+          };
+
+          const distance = getValOnCubicBezier_givenXorX(distanceOptions) - iteratorSource.topOffset;
+
+          if (distance) {
+            let source = collection[index + i];
+
+            if (!source) {
+              source = collection[collection.length - 1];
+            }
+
+            resultLineCoords.push({
+              x: collection[index].x + i - config.canvasStartingPoint[0],
+              y: source.y + distance
+            });
+          }
+        }
+
+        resultLineCoords.push({
+          x: width,
+          y: resultLineCoords[resultLineCoords.length - 1].y
+        });
+
+        collectionsArray.push(resultLineCoords);
+
+        var line = d3.line()
+          .x(d => d.x)
+          .y(d => d.y)
+          .curve(d3.curveLinear)
+          .context(context);
+
+        context.beginPath();
+        line(resultLineCoords);
+        context.lineWidth = config.targetLineWidth;
+        context.strokeStyle = config.targetLineColor;
+        context.stroke();
       });
     }
   }
@@ -182,35 +370,94 @@ export default function draw() {
     .call(update)
     .node();
 
-  const throttledMouseMove = function handleMouseMove(){
+  function handleMouseMove(){
     var xy = d3.mouse(this);
 
     var color = context.getImageData(xy[0], xy[1], 1, 1).data;
 
-    if (color[2] > 135 && color[2] < 145) {
+    let wasCatch = false;
+
+    if (color[2] > 135 && color[2] < 145) { // blue
       if (pointerCircleCoords.x !== xy[0] && pointerCircleCoords.y !== xy[1]) {
+        wasCatch = true;
+        hoverOn = 'targetLine';
         pointerCircleCoords.x = xy[0];
         pointerCircleCoords.y = xy[1];
         update();
       }
     } else if (pointerCircleCoords.x !== -100) {
+      hoverOn = null;
       pointerCircleCoords.x = -100;
       pointerCircleCoords.y = -100;
+      update();
+    }
+
+    if (color[1] > 95 && color[1] < 105) { // green
+      if (pointerCircleCoords.x !== xy[0] && pointerCircleCoords.y !== xy[1]) {
+        hoverOn = 'resultsLine';
+        pointerCircleCoords.x = xy[0];
+        pointerCircleCoords.y = xy[1];
+        pointerCircleCoords.y = xy[1];
+        update();
+      }
+    } else if (pointerCircleCoords.x !== -100 && !wasCatch) {
+      pointerCircleCoords.x = -100;
+      pointerCircleCoords.y = -100;
+      hoverOn = null;
       update();
     }
   };
 
   d3.select(context.canvas)
-    .on('mousemove', throttledMouseMove)
+    .on('mousemove', handleMouseMove)
     .on('click', handleClick);
 
-  function handleClick() {
-    var xy = d3.mouse(this);
+  let hoverOn = null;
 
-    if (pointerCircleCoords.x > 0) {
-      targetPoints[0] = xy[0];
+  function handleClick() {
+    const [x,y] = d3.mouse(this);
+
+    if (y >= mainCurvePoints[0][1] && hoverOn === 'targetLine') {
+      const currentTargetPointXPosition = targetPoints[0];
+      targetPoints[0] = Math.ceil(x);
+
+      if (resultsPoints.length) {
+        resultsPoints = resultsPoints.map(xPos => xPos + targetPoints[0] - currentTargetPointXPosition);
+      }
 
       update();
+    }
+
+    if (hoverOn === 'resultsLine') {
+      let theIndex = null;
+
+      [targetLineCoords].concat(collectionsArray).forEach((arr, idx) => {
+        const index = Math.ceil(x) - arr[0].x + 1;
+        const item = arr[index];
+
+        if (item && item.y <= y + 3 && item.y >= y - 3) {
+          theIndex = idx;
+        }
+      });
+
+      if (theIndex === collectionsArray.length) {
+        if (refsArray.length > collectionsArray.length + 1) {
+          resultsPoints.push(Math.ceil(x));
+
+          update();
+        } else if (theIndex >= collectionsArray.length) {
+          alert('Для отрисовки необходимо добавить ещё одну референсную линию');
+        }
+      } else if (theIndex < collectionsArray.length) {
+        const prev = resultsPoints[theIndex];
+        resultsPoints[theIndex] = Math.ceil(x);
+
+        for(let i = theIndex + 1; i < resultsPoints.length; i++) {
+          resultsPoints[i] = resultsPoints[i] + (Math.ceil(x) - prev);
+        }
+
+        update();
+      }
     }
   }
 
@@ -222,7 +469,7 @@ export default function draw() {
       let isRightHandler = false;
       let isTuner = false;
       let setIndex = null;
-      let isMainCurve
+      let isMainCurve;
 
       refsArray.concat([mainCurvePoints]).forEach((points, index) => {
         for (const p of points) {
@@ -286,7 +533,7 @@ export default function draw() {
           yCoord = clamp(d3.event.y, array[0][1], Infinity);
           array[2][1] = yCoord;
 
-          const leftEdge = targetPoints.length
+          const leftEdge = targetPoints.length && isMainCurve
             ? targetPoints[0] > array[2][0] ? targetPoints[0] : array[2][0]
             : array[2][0];
 
@@ -342,6 +589,10 @@ export default function draw() {
     ctx.beginPath();
     ctx.arc(p.x, p.y, r, 0, 2*Math.PI);
     ctx.stroke();
+
+    context.font = "10px Arial";
+    context.fillText(`${ p.x },${ p.y.toFixed(2) }`,p.x + 5,p.y - 5);
+
 
     if (options) {
       ctx.lineWidth = config.defaultLineColor;

@@ -16,9 +16,11 @@ module.exports = {
   dividerLineColor: 'black',
   mainLineColor: 'darkblue',
   mainLineWidth: 4,
-  dividerOffset: 70,
+  dividerOffset:  70,
   circleColor: 'red',
   circleWidth: 3,
   targetPointColor: 'green',
-  targetPointWidth: 5
+  targetPointWidth: 1,
+  targetLineColor: 'darkgreen',
+  targetLineWidth: 4
 };
