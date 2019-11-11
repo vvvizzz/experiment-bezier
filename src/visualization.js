@@ -4,9 +4,10 @@ import config from './config';
 import clamp from 'lodash/clamp';
 
 import './styles.styl';
+import {main} from "d3/dist/package";
 
-const width = 4000;
-const height = 4000;
+const width = 2000;
+const height = 2000;
 
 const refsArray = [];
 let mainCurvePoints = [];
@@ -144,7 +145,7 @@ export default function draw() {
     drawCircle(
       context,
       pointerCircleCoords,
-      5,
+      8,
       {
         width: config.circleWidth,
         color: config.circleColor
@@ -175,9 +176,11 @@ export default function draw() {
           x
         };
 
-        const y = getValOnCubicBezier_givenXorX(options);
+        let y = getValOnCubicBezier_givenXorX(options);
 
-        if (!y) { return false; }
+        if (!y) {
+          y = mainCurvePoints[3][1];
+        }
 
         drawCircle(
           context,
@@ -277,7 +280,9 @@ export default function draw() {
 
         const pointCoords = {
           x: xPos,
-          y: collection[index].y
+          y: collection[index]
+            ? collection[index].y
+            : collection[collection.length - 1].y
         };
 
         drawCircle(
@@ -332,12 +337,14 @@ export default function draw() {
           if (distance) {
             let source = collection[index + i];
 
-            if (!source) {
+            if (!source || !collection[index]) {
               source = collection[collection.length - 1];
             }
 
             resultLineCoords.push({
-              x: collection[index].x + i - config.canvasStartingPoint[0],
+              x: collection[index]
+                ? collection[index].x + i - config.canvasStartingPoint[0]
+                : xPos + i - config.canvasStartingPoint[0],
               y: source.y + distance
             });
           }
@@ -433,7 +440,7 @@ export default function draw() {
 
       [targetLineCoords].concat(collectionsArray).forEach((arr, idx) => {
         const index = Math.ceil(x) - arr[0].x + 1;
-        const item = arr[index];
+        const item = index > arr.length ? arr[arr.length - 1] : arr[index];
 
         if (item && item.y <= y + 3 && item.y >= y - 3) {
           theIndex = idx;
@@ -663,7 +670,17 @@ export default function draw() {
       y: pts[3].y
     };
 
-    drawLine(ctx, horizontalConnectLineStartCoords, horizontalConnectLineEndCoords, connectLineConfig);
+    const horizontalConnectMainLineConfig = {
+      color: config.mainLineColor,
+      width: config.mainLineWidth
+    };
+
+    drawLine(
+      ctx,
+      horizontalConnectLineStartCoords,
+      horizontalConnectLineEndCoords,
+      isMain ? horizontalConnectMainLineConfig : connectLineConfig
+    );
 
     // curve
     drawCurve(context, curve, isMain);
