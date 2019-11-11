@@ -6,8 +6,8 @@ import clamp from 'lodash/clamp';
 import './styles.styl';
 import {main} from "d3/dist/package";
 
-const width = 2000;
-const height = 2000;
+const width = 4000;
+const height = 4000;
 
 const refsArray = [];
 let mainCurvePoints = [];
