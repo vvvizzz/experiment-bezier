@@ -4,7 +4,6 @@ import config from './config';
 import clamp from 'lodash/clamp';
 
 import './styles.styl';
-import {main} from "d3/dist/package";
 
 var path = document.createElementNS("http://www.w3.org/2000/svg","path");
 
@@ -109,8 +108,8 @@ export default function draw() {
     event.preventDefault();
     if (event.keyCode === 32) { // space
       mainCurvePoints.push([
-        mainCurvePoints[mainCurvePoints.length - 1][0] + 30,
-        mainCurvePoints[mainCurvePoints.length - 1][1] - 30,
+        mainCurvePoints[mainCurvePoints.length - 1][0] + 75,
+        mainCurvePoints[mainCurvePoints.length - 1][1],
       ]);
 
       update();
