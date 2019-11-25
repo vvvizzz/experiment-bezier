@@ -6,6 +6,8 @@ import clamp from 'lodash/clamp';
 import './styles.styl';
 import {main} from "d3/dist/package";
 
+var path = document.createElementNS("http://www.w3.org/2000/svg","path");
+
 const width = 4000;
 const height = 4000;
 
@@ -103,6 +105,24 @@ export default function draw() {
     ]
   ];
 
+  window.addEventListener('keydown', function(event) {
+    event.preventDefault();
+    if (event.keyCode === 32) { // space
+      mainCurvePoints.push([
+        mainCurvePoints[mainCurvePoints.length - 1][0] + 30,
+        mainCurvePoints[mainCurvePoints.length - 1][1] - 30,
+      ]);
+
+      update();
+    }
+
+    if (event.keyCode === 8) { // backspace
+      mainCurvePoints.pop();
+
+      update();
+    }
+  });
+
   function addNewCurve() {
     const last = refsArray[refsArray.length - 1];
 
@@ -152,34 +172,69 @@ export default function draw() {
       }
     );
 
-    // mainCurve
-    const mainCurve = new Bezier(mainCurvePoints.flat());
-    drawSkeleton(context, mainCurve, mainCurvePoints, true);
+    var line = d3.line()
+      .x(d => d[0])
+      .y(d => d[1])
+      .curve(d3.curveLinear)
+      .context(context);
+
+    var bezierLine = d3.line()
+      .x(d => d[0])
+      .y(d => d[1])
+      .curve(d3.curveBasis)
+      .context(context);
+
+    var bezierLineRef = d3.line()
+      .x(d => d[0])
+      .y(d => d[1])
+      .curve(d3.curveBasis);
+
+    path.setAttribute('d', bezierLineRef(mainCurvePoints));
+
+    context.beginPath();
+    line(mainCurvePoints);
+    context.lineWidth = config.defaultLineWidth;
+    context.strokeStyle = config.defaultLineColor;
+    context.stroke();
+
+    context.beginPath();
+    bezierLine(mainCurvePoints);
+    context.lineWidth = config.mainLineWidth;
+    context.strokeStyle = config.mainLineColor;
+    context.stroke();
+
+    const horizontalConnectLineEndCoords = {
+      x: width,
+      y: mainCurvePoints[mainCurvePoints.length - 1][1]
+    };
+
+    const horizontalConnectMainLineConfig = {
+      color: config.mainLineColor,
+      width: config.mainLineWidth
+    };
+
+    drawLine(
+      context,
+      {
+        x: mainCurvePoints[mainCurvePoints.length - 1][0],
+        y: mainCurvePoints[mainCurvePoints.length - 1][1],
+      },
+      horizontalConnectLineEndCoords,
+      horizontalConnectMainLineConfig
+    );
+
+    mainCurvePoints.forEach(point => {
+      drawCircle(context, {x: point[0], y: point[1]}, 6, {color: 'black', width: 1});
+    });
 
     if (targetPoints.length) {
       targetPoints.forEach((x, index) => {
-        const options = {
-          cubicBezier: {
-            xs:[
-              mainCurvePoints[0][0],
-              mainCurvePoints[1][0],
-              mainCurvePoints[2][0],
-              mainCurvePoints[3][0]
-            ],
-            ys:[
-              mainCurvePoints[0][1],
-              mainCurvePoints[1][1],
-              mainCurvePoints[2][1],
-              mainCurvePoints[3][1]
-            ]
-          },
-          x
-        };
+        let y = null;
 
-        let y = getValOnCubicBezier_givenXorX(options);
-
-        if (!y) {
-          y = mainCurvePoints[3][1];
+        if (x > mainCurvePoints[mainCurvePoints.length - 1][0]) {
+          y = mainCurvePoints[mainCurvePoints.length - 1][1];
+        } else {
+          y = findYatX(x, path)[1];
         }
 
         drawCircle(
@@ -207,6 +262,8 @@ export default function draw() {
             y: y + refsArray[0][0][1] - refsArray[0].topOffset
           }];
 
+          let startLen = 0;
+
           for(let i = refsArray[0][0][0]; i <= refsArray[0][3][0]; i++) {
             const distanceOptions = {
               cubicBezier: {
@@ -228,15 +285,15 @@ export default function draw() {
 
             const distance = getValOnCubicBezier_givenXorX(distanceOptions) - refsArray[0].topOffset;
 
-            const coordsOptions = {
-              ...options,
-              x: x + i - config.canvasStartingPoint[0],
-            };
+            let bezierY = null;
+            const currentX = x + i - config.canvasStartingPoint[0];
 
-            let bezierY = getValOnCubicBezier_givenXorX(coordsOptions);
-
-            if (!bezierY) {
-              bezierY = mainCurvePoints[3][1];
+            if (currentX > mainCurvePoints[mainCurvePoints.length - 1][0]) {
+              bezierY = mainCurvePoints[mainCurvePoints.length - 1][1];
+            } else {
+              const result = findYatX(currentX, path, startLen);
+              bezierY = result[1];
+              startLen = result[2];
             }
 
             if (distance) {
@@ -313,7 +370,7 @@ export default function draw() {
           }
         ];
 
-        for(let i = iteratorSource[0][0]; i < iteratorSource[3][0]; i++) {
+        for(let i = iteratorSource[0][0]; i < iteratorSource[iteratorSource.length - 1][0]; i++) {
           const distanceOptions = {
             cubicBezier: {
               xs:[
@@ -476,6 +533,7 @@ export default function draw() {
       let isRightHandler = false;
       let isTuner = false;
       let setIndex = null;
+      let pointIndex = null;
       let isMainCurve;
 
       refsArray.concat([mainCurvePoints]).forEach((points, index) => {
@@ -487,9 +545,10 @@ export default function draw() {
 
             isMainCurve = mainCurvePoints === points;
             isLeftHandler = points.indexOf(p) === 0;
-            isRightHandler = points.indexOf(p) === 3;
-            isTuner = points.indexOf(p) === 1 || points.indexOf(p) === 2;
+            isRightHandler = points.indexOf(p) === (points.length - 1);
+            isTuner = points.indexOf(p) !== 0 && points.indexOf(p) !== (points.length - 1);
             setIndex = index;
+            pointIndex = points.indexOf(p);
           }
         }
       });
@@ -503,6 +562,7 @@ export default function draw() {
         isLeftHandler,
         isRightHandler,
         isTuner,
+        pointIndex,
         setIndex,
         isMainCurve
       };
@@ -515,6 +575,7 @@ export default function draw() {
         isMainCurve,
         isTuner,
         setIndex,
+        pointIndex,
       } = d3.event.subject;
 
       const array = isMainCurve ? mainCurvePoints : refsArray[setIndex];
@@ -523,20 +584,25 @@ export default function draw() {
 
       const maxTop = array[3][1];
 
-      if (!isLeftHandler && !isRightHandler) {
+      if (!isLeftHandler && !isRightHandler && !isMainCurve) {
         array[1][0] = clamp(d3.event.x, array[0][0], array[3][0]);
         array[2][0] = clamp(d3.event.x, array[0][0], array[3][0]);
+      }
+
+      if (!isLeftHandler && !isRightHandler && isMainCurve) {
+        array[pointIndex][0] = d3.event.x;
+        array[pointIndex][1] = d3.event.y;
       }
 
       if (!isTuner) {
         let yCoord = null;
 
         if (isLeftHandler) {
-          yCoord = clamp(d3.event.y, array.topOffset, array[3][1]);
+          yCoord = clamp(d3.event.y, array.topOffset, array[array.length - 1][1]);
           array[1][1] = yCoord;
         }
 
-        if (isRightHandler) {
+        if (isRightHandler && !isMainCurve) {
           yCoord = clamp(d3.event.y, array[0][1], Infinity);
           array[2][1] = yCoord;
 
@@ -547,7 +613,16 @@ export default function draw() {
           array[3][0] = clamp(d3.event.x, leftEdge, width);
         }
 
-        d3.event.subject.point[1] = yCoord;
+        if (isRightHandler && isMainCurve) {
+          array[pointIndex][0] = d3.event.x;
+          array[pointIndex][1] = d3.event.y;
+        }
+
+        if (isMainCurve) {
+          d3.event.subject.point[1] = d3.event.y;
+        } else {
+          d3.event.subject.point[1] = yCoord;
+        }
       }
 
       if (!isMainCurve) {
@@ -762,4 +837,14 @@ function getValOnCubicBezier_givenXorX(options) {
       return LUT[unk][i] + linearInterpolationValue;
     }
   }
+}
+
+function findYatX(x, linePath, startLen) {
+  function getXY(len) {
+    var point = linePath.getPointAtLength(len);
+    return [point.x, point.y, len];
+  }
+  var curlen = startLen || 0;
+  while (getXY(curlen)[0] < x) { curlen += 1; }
+  return getXY(curlen);
 }
