@@ -1,5 +1,5 @@
 module.exports = {
-  canvasStartingPoint: [10, 10],
+  canvasStartingPoint: [10, 50],
   defaultCurveHeight: 80,
   defaultCurveWidth: 400,
   defaultLineWidth: 1,

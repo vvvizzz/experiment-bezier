@@ -32,7 +32,8 @@ export default function draw() {
     .attr('height', height)
     .node();
 
-  const button = d3.select('.plus-button');
+  const plusButton = d3.select('.plus-button');
+  const minusButton = d3.select('.minus-button');
   const saveButton = d3.select('.save');
 
   const context = canvas.getContext('2d');
@@ -71,11 +72,17 @@ export default function draw() {
         + config.defaultRefLineYOffset;
     }
 
-    button
+    plusButton
       .style('top', `${ currentPoints[3][1] + 20 }px`);
 
-    button
+    plusButton
       .on('click', addNewCurve);
+
+    minusButton
+      .style('top', `${ currentPoints[3][1] + 20 }px`);
+
+    minusButton
+      .on('click', removeLastCurve);
   }
 
   addCurve(config.canvasStartingPoint);
@@ -133,8 +140,32 @@ export default function draw() {
     update();
   }
 
+  function removeLastCurve() {
+    const removedCurvePoints = refsArray.pop();
+
+    for (let k = 0; k < mainCurvePoints.length; k++) {
+      mainCurvePoints[k][1] -= removedCurvePoints[3][1] - removedCurvePoints[0][1] + config.refsDistance
+        + config.defaultRefLineYOffset;
+    }
+
+    plusButton
+      .style('top', `${ refsArray[refsArray.length - 1][3][1] + 20 }px`);
+
+    minusButton
+      .style('top', `${ refsArray[refsArray.length - 1][3][1] + 20 }px`);
+
+    update();
+  }
+
   function update() {
     context.clearRect(0, 0, width, height);
+
+    if (refsArray.length > 1) {
+      minusButton.style('display', 'block');
+    } else {
+      minusButton.style('display', 'none');
+    }
+
 
     curves.length = 0;
 
@@ -159,6 +190,11 @@ export default function draw() {
     drawLine(context, dividerStartCoords, dividerEndCoords, {
       color: config.dividerLineColor, width: config.dividerLineWidth
     });
+
+    pointerCircleCoords.text = [
+      pointerCircleCoords.x - mainCurvePoints[0][0],
+      pointerCircleCoords.y - mainCurvePoints[0][1],
+    ];
 
     // pointer circle
     drawCircle(
@@ -222,8 +258,11 @@ export default function draw() {
       horizontalConnectMainLineConfig
     );
 
-    mainCurvePoints.forEach(point => {
-      drawCircle(context, {x: point[0], y: point[1]}, 6, {color: 'black', width: 1});
+    mainCurvePoints.forEach((point, index) => {
+      const p = {x: point[0], y: point[1]};
+
+      p.text = [mainCurvePoints[index][0] - mainCurvePoints[0][0], mainCurvePoints[index][1] - mainCurvePoints[0][1]];
+      drawCircle(context, p, 6, {color: 'black', width: 1});
     });
 
     if (targetPoints.length) {
@@ -236,21 +275,25 @@ export default function draw() {
           y = findYatX(x, path)[1];
         }
 
+        const p = {
+          x,
+          y
+        };
+
+        p.text = [
+          p.x - mainCurvePoints[0][0],
+          p.y - mainCurvePoints[0][1],
+        ]
+
         drawCircle(
           context,
-          {
-            x,
-            y
-          },
+          p,
           4,
           {
             width: config.targetPointWidth * 2,
             color: config.targetPointColor
           }
         );
-
-        context.font = "10px Arial";
-        context.fillText(`${ x },${ y.toFixed(2) }`,x + 5,y - 5);
 
         if (index === 0) {
           targetLineCoords = [{
@@ -349,14 +392,6 @@ export default function draw() {
             width: config.targetPointWidth * 2,
             color: config.targetPointColor
           }
-        );
-
-        context.font = "10px Arial";
-
-        context.fillText(
-          `${ pointCoords.x },${ pointCoords.y.toFixed(2) }`,
-          pointCoords.x + 5,
-          pointCoords.y - 5
         );
 
         const iteratorSource = refsArray[itemIndex + 1];
@@ -640,7 +675,7 @@ export default function draw() {
             mainCurvePoints[k][1] += d3.event.subject.point[1] - maxTop;
           }
 
-          button.style('top', `${ refsArray[refsArray.length - 1][3][1] + 30 }px`);
+          plusButton.style('top', `${ refsArray[refsArray.length - 1][3][1] + 30 }px`);
         }
       }
     }
@@ -672,8 +707,7 @@ export default function draw() {
     ctx.stroke();
 
     context.font = "10px Arial";
-    context.fillText(`${ p.x },${ p.y.toFixed(2) }`,p.x + 5,p.y - 5);
-
+    context.fillText(`${ (p.text ? p.text[0] : p.x).toFixed(2) } ${ (p.text ? p.text[1] : p.y).toFixed(2) }`,p.x + 5,p.y - 5);
 
     if (options) {
       ctx.lineWidth = config.defaultLineColor;
@@ -681,9 +715,26 @@ export default function draw() {
     }
   }
 
-  function drawPoints(ctx, points, options) {
+  function drawPoints(ctx, points, options, array) {
     ctx.strokeStyle = options.color || config.defaultLineColor;
-    points.forEach(p => drawCircle(ctx, p, 6));
+
+    points.forEach((p, index) => {
+      let text = '';
+
+      if (index === 0) {
+        text = [0, array[0][1] - array.topOffset];
+      } else if (index === 1) {
+        text = [ array[1][0] - array[0][0], array[1][1] - array.topOffset ];
+      } else if (index === 2) {
+        text = [ array[2][0] - array[0][0], array[2][1] - array.topOffset ];
+      } else if (index === 3) {
+        text = [ array[3][0] - array[0][0], array[3][1] - array.topOffset ];
+      }
+
+      p.text = text;
+
+      drawCircle(ctx, p, 6);
+    });
   }
 
   function drawSkeleton(ctx, curve, array, isMain) {
@@ -714,7 +765,7 @@ export default function draw() {
     drawLine(ctx, pts[2], pts[3], {color: 'lightgrey'});
 
     // handler circles
-    drawPoints(ctx, pts, {color: 'black'});
+    drawPoints(ctx, pts, {color: 'black'}, array);
 
     // left connect line
     const leftConnectLineStartCoords = horizontalLineStartCoords;
