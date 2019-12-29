@@ -9,7 +9,6 @@ var path = document.createElementNS("http://www.w3.org/2000/svg","path");
 
 const width = 4000;
 const height = 4000;
-
 const refsArray = [];
 let mainCurvePoints = [];
 let collectionsArray = [];
@@ -24,6 +23,23 @@ const pointerCircleCoords = {
   y: -100
 };
 
+function swapItems(a, b) {
+  const aCopy = a.map(i => i.map(j => j));
+  aCopy.topOffset = a.topOffset;
+
+  a.forEach((item, index) => {
+    item[0] = b[index][0];
+    item[1] = a.topOffset + (b[index][1] - b.topOffset);
+  });
+
+  b.topOffset = a[3][1] + config.refsDistance;
+
+  b.forEach((item, index) => {
+    item[0] = aCopy[index][0];
+    item[1] = b.topOffset + (aCopy[index][1] - aCopy.topOffset);
+  });
+}
+
 export default function draw() {
   const canvas = d3.select('.chart')
     .append('canvas')
@@ -34,6 +50,9 @@ export default function draw() {
 
   const plusButton = d3.select('.plus-button');
   const minusButton = d3.select('.minus-button');
+  const upButtonsContainer = document.querySelector('.up-buttons');
+  const downButtonsContainer = document.querySelector('.down-buttons');
+  const duplicateButtonsContainer = document.querySelector('.duplicate-buttons');
   const saveButton = d3.select('.save');
 
   const context = canvas.getContext('2d');
@@ -142,6 +161,7 @@ export default function draw() {
 
   function removeLastCurve() {
     const removedCurvePoints = refsArray.pop();
+    resultsPoints.pop();
 
     for (let k = 0; k < mainCurvePoints.length; k++) {
       mainCurvePoints[k][1] -= removedCurvePoints[3][1] - removedCurvePoints[0][1] + config.refsDistance
@@ -153,6 +173,10 @@ export default function draw() {
 
     minusButton
       .style('top', `${ refsArray[refsArray.length - 1][3][1] + 20 }px`);
+
+    d3.select(duplicateButtonsContainer.children[duplicateButtonsContainer.children.length - 1]).remove();
+    d3.select(upButtonsContainer.children[duplicateButtonsContainer.children.length - 1]).remove();
+    d3.select(downButtonsContainer.children[duplicateButtonsContainer.children.length - 1]).remove();
 
     update();
   }
@@ -166,12 +190,92 @@ export default function draw() {
       minusButton.style('display', 'none');
     }
 
-
     curves.length = 0;
 
     refsArray.forEach((points, index) => {
       const curve = new Bezier(points.flat());
       curves.push(curve);
+
+      let btnDown = d3.select(downButtonsContainer.children[index]);
+
+      if (!btnDown.size()) {
+        btnDown = d3.select(downButtonsContainer.appendChild(document.createElement('div')));
+      }
+
+      btnDown.on('click', () => {
+        swapItems(refsArray[index], refsArray[index + 1]);
+
+        update();
+      });
+
+      btnDown.style('display', 'block');
+      btnDown.style('top', `${ points.topOffset }px`);
+
+      if (index === refsArray.length - 1) {
+        btnDown.style('display', 'none');
+      }
+
+      let btnUp = d3.select(upButtonsContainer.children[index]);
+
+      if (!btnUp.size()) {
+        btnUp = d3.select(upButtonsContainer.appendChild(document.createElement('div')));
+      }
+
+      btnUp.on('click', () => {
+        swapItems(refsArray[index - 1], refsArray[index]);
+
+        update();
+      });
+
+      btnUp.style('display', 'block');
+      btnUp.style('top', `${ points.topOffset }px`);
+
+      if (index === 0) {
+        btnUp.style('display', 'none');
+      }
+
+      let btnDplc = d3.select(duplicateButtonsContainer.children[index]);
+
+      if (!btnDplc.size()) {
+        btnDplc = d3.select(duplicateButtonsContainer.appendChild(document.createElement('div')));
+      }
+
+      btnDplc.on('click', () => {
+        const newItem = [[],[],[],[]];
+
+        newItem.topOffset = refsArray[index][3][1] + config.refsDistance;
+
+        refsArray[index].forEach((item, indx) => {
+          newItem[indx][0] = item[0];
+          newItem[indx][1] = newItem.topOffset + (item[1] - refsArray[index].topOffset);
+        });
+
+        const maxTop = newItem[3][1] - newItem.topOffset + config.refsDistance;
+
+        for (let i = index + 1; i < refsArray.length; i++) {
+          refsArray[i].forEach((item) => {
+            item[1] = item[1] + maxTop;
+          });
+
+          refsArray[i].topOffset = refsArray[i].topOffset + maxTop;
+        }
+
+        mainCurvePoints.forEach(item => {
+          item[1] = item[1] + maxTop;
+        });
+
+        refsArray.splice(index + 1, 0, newItem);
+
+        update();
+      });
+
+      btnDplc.style('top', `${ points.topOffset }px`);
+
+      plusButton
+        .style('top', `${ refsArray[refsArray.length - 1][3][1] + 20 }px`);
+
+      minusButton
+        .style('top', `${ refsArray[refsArray.length - 1][3][1] + 20 }px`);
 
       drawSkeleton(context, curve, refsArray[index]);
     });
@@ -426,7 +530,7 @@ export default function draw() {
           const distance = getValOnCubicBezier_givenXorX(distanceOptions) - iteratorSource.topOffset;
 
           if (distance) {
-            let source = collection[index + i];
+            let source = collection[index + i - config.canvasStartingPoint[0]];
 
             if (!source || !collection[index]) {
               source = collection[collection.length - 1];

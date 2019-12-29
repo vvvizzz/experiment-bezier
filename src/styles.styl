@@ -29,6 +29,54 @@
   }
 }
 
+
+
+.up-buttons div, .down-buttons div, .duplicate-buttons div {
+  position: absolute;
+  border: 2px solid grey;
+  border-radius: 50%;
+  width: 20px;
+  height: 20px;
+  cursor: pointer;
+
+  &:hover {
+    background-color: gray;
+  }
+}
+
+.up-buttons div {
+  left: 15px
+}
+
+.down-buttons div {
+  left: 40px
+}
+
+.duplicate-buttons div {
+  left: 65px
+}
+
+.down-buttons div:after {
+  content: '▼';
+  position: relative;
+  left: 2px;
+  top: 2px;
+}
+
+.up-buttons div:after {
+  content: '▲';
+  position: relative;
+  left: 2px;
+  top: -3px;
+}
+
+.duplicate-buttons div:after {
+  content: 'Ξ';
+  position: relative;
+  left: 5px;
+  top: 1px;
+}
+
 .minus-button {
   position: absolute;
   border: 2px solid lightgrey;
