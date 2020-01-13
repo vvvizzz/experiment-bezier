@@ -56,6 +56,12 @@
   left: 65px
 }
 
+.offset-inputs input {
+  position: absolute;
+  width: 80px;
+  left: 7px;
+}
+
 .down-buttons div:after {
   content: '▼';
   position: relative;
@@ -101,5 +107,16 @@
   &:after {
     height: 0.2em;
     width: 1em;
+  }
+}
+
+.coords-inputs {
+  position: absolute;
+  background: lightgrey;
+  padding: 10px;
+  border-radius: 3px;
+
+  input:disabled {
+    cursor: not-allowed;
   }
 }

@@ -16,12 +16,17 @@ let targetLineCoords = null;
 let resultsPoints = [];
 const targetPoints = [];
 let curves = [];
-
+let inputIsFocused = false;
+let prevValue = null;
 
 const pointerCircleCoords = {
   x: -100,
   y: -100
 };
+
+const coordsInputsContainer = d3.select('.coords-inputs');
+const coordsInputX = d3.select('.coords-input-x');
+const coordsInputY = d3.select('.coords-input-y');
 
 function swapItems(a, b) {
   const aCopy = a.map(i => i.map(j => j));
@@ -53,6 +58,7 @@ export default function draw() {
   const upButtonsContainer = document.querySelector('.up-buttons');
   const downButtonsContainer = document.querySelector('.down-buttons');
   const duplicateButtonsContainer = document.querySelector('.duplicate-buttons');
+  const offsetInputsContainer = document.querySelector('.offset-inputs');
   const saveButton = d3.select('.save');
 
   const context = canvas.getContext('2d');
@@ -131,7 +137,12 @@ export default function draw() {
   ];
 
   window.addEventListener('keydown', function(event) {
+    if (inputIsFocused) {
+      return false;
+    }
+
     event.preventDefault();
+
     if (event.keyCode === 32) { // space
       mainCurvePoints.push([
         mainCurvePoints[mainCurvePoints.length - 1][0] + 75,
@@ -177,6 +188,7 @@ export default function draw() {
     d3.select(duplicateButtonsContainer.children[duplicateButtonsContainer.children.length - 1]).remove();
     d3.select(upButtonsContainer.children[duplicateButtonsContainer.children.length - 1]).remove();
     d3.select(downButtonsContainer.children[duplicateButtonsContainer.children.length - 1]).remove();
+    d3.select(offsetInputsContainer.children[offsetInputsContainer.children.length - 1]).remove();
 
     update();
   }
@@ -270,6 +282,59 @@ export default function draw() {
       });
 
       btnDplc.style('top', `${ points.topOffset }px`);
+
+      let offsetInput = d3.select(offsetInputsContainer.children[index]);
+
+      if (!offsetInput.size() && (!index || (index === 1 && (0 in targetPoints)) || (index > 1 && (index - 2 in resultsPoints)))) {
+        const input = document.createElement('input');
+        input.type = "text";
+        offsetInput = d3.select(offsetInputsContainer.appendChild(input));
+
+        offsetInput.on('focus', function() {
+          inputIsFocused = true;
+          prevValue = parseInt(this.value, 10);
+        });
+
+        offsetInput.on('blur', function() {
+          inputIsFocused = false;
+
+          const index = Array.prototype.indexOf.call(offsetInputsContainer.children, offsetInput.node());
+          const value = parseInt(this.value, 10) + config.canvasStartingPoint[0];
+
+          if (!index && (!value || value < config.canvasStartingPoint[0])) {
+            this.focus();
+            alert('Укажите неотрицательное значение');
+            return false;
+          }
+
+          if (index && value < (resultsPoints[index - 2] || targetPoints[0])) {
+            this.focus();
+            alert(`Укажите значение от ${ (resultsPoints[index - 2] || targetPoints[0]) - 100 }`);
+            return false;
+          }
+
+          if (prevValue) {
+            const diff = value - config.canvasStartingPoint[0] - prevValue;
+
+            for(let j = index + 1; j < offsetInputsContainer.children.length; j++) {
+              const inputNode = d3.select(offsetInputsContainer.children[j]);
+              const inputValue = parseInt(inputNode.property('value'), 10);
+              inputNode.property('value', inputValue + diff);
+              resultsPoints[j - 1] = inputValue + diff + config.canvasStartingPoint[0];
+            }
+          }
+
+          if (index) {
+            resultsPoints[index - 1] = value;
+          } else {
+            targetPoints[0] = value;
+          }
+
+          update();
+        });
+      }
+
+      offsetInput.style('top', `${ points.topOffset + 30 }px`);
 
       plusButton
         .style('top', `${ refsArray[refsArray.length - 1][3][1] + 20 }px`);
@@ -488,6 +553,11 @@ export default function draw() {
             : collection[collection.length - 1].y
         };
 
+        pointCoords.text = [
+          pointCoords.x - config.canvasStartingPoint[0],
+          pointCoords.y - targetLineCoords[0].y,
+        ];
+
         drawCircle(
           context,
           pointCoords,
@@ -616,7 +686,164 @@ export default function draw() {
 
   let hoverOn = null;
 
+  let inputProps = {};
+
+  function handleFocus() {
+    inputIsFocused = true;
+  };
+
+  function handleBlur() {
+    inputIsFocused = false;
+  };
+
   function handleClick() {
+    let S = null;
+    let R = 16;
+    inputProps = {};
+
+    refsArray.concat([mainCurvePoints]).forEach((points, index) => {
+      for (const p of points) {
+        const top = window.pageYOffset || document.documentElement.scrollTop;
+        const left = window.pageXOffset || document.documentElement.scrollLeft;
+        let r = Math.hypot(d3.event.x + left - p[0], d3.event.y + top - p[1]);
+        if (r < R) {
+          R = r;
+          S = p;
+
+          inputProps.isMainCurve = mainCurvePoints === points;
+          inputProps.isLeftHandler = points.indexOf(p) === 0;
+          inputProps.isRightHandler = points.indexOf(p) === (points.length - 1);
+          inputProps.isTuner = points.indexOf(p) !== 0 && points.indexOf(p) !== (points.length - 1);
+          inputProps.setIndex = index;
+          inputProps.pointIndex = points.indexOf(p);
+        }
+      }
+    });
+
+    if (S) {
+      coordsInputX.attr('disabled', null);
+      coordsInputX.attr('title', '');
+      coordsInputY.attr('disabled', null);
+      coordsInputY.attr('title', '');
+
+      coordsInputX.property('value', S[0] - config.canvasStartingPoint[0]);
+      
+      if (inputProps.isMainCurve) {
+        coordsInputY.property('value', S[1] - mainCurvePoints[0][1]);
+
+        if (inputProps.pointIndex === 0) {
+          coordsInputX.attr('disabled', true);
+          coordsInputX.attr('title', 'Изменение координаты X для этой точки не возможно');
+        }
+      } else {
+        coordsInputY.property('value', S[1] - refsArray[inputProps.setIndex].topOffset);
+
+        if (inputProps.isLeftHandler) {
+          coordsInputX.attr('disabled', true);
+          coordsInputX.attr('title', 'Изменение координаты X для этой точки не возможно');
+        }
+
+        if (inputProps.isTuner) {
+          coordsInputY.attr('disabled', true);
+          coordsInputY.attr('title', 'Изменение координаты Y для этой точки не возможно');
+        }
+      }
+
+      coordsInputsContainer
+        .style('left', `${ S[0] + 15 }px`)
+        .style('top', `${ S[1] + 15 }px`)
+        .style('display', 'block');
+
+      function handleKeyDown() {
+        if (d3.event.keyCode === 13) {
+          const x = parseInt(coordsInputX.node().value, 10);
+          const y = parseInt(coordsInputY.node().value, 10);
+
+          if (!inputProps.isMainCurve) {
+            if (inputProps.isLeftHandler) {
+              if (y < 0) {
+                alert('Координата Y не может быть отрицательной');
+                return false;
+              }
+
+              const yLimit = refsArray[inputProps.setIndex][3][1] - refsArray[inputProps.setIndex].topOffset;
+
+              if (y > yLimit) {
+                alert('Координата Y не может быть больше ' + yLimitk);
+                return false;
+              }
+              
+              refsArray[inputProps.setIndex][0][0] = x + config.canvasStartingPoint[0];
+              refsArray[inputProps.setIndex][0][1] = y + refsArray[inputProps.setIndex].topOffset;
+              refsArray[inputProps.setIndex][1][1] = y + refsArray[inputProps.setIndex].topOffset;
+            }
+
+
+            if (inputProps.isRightHandler) {
+              const xLimit = refsArray[inputProps.setIndex][1][0] - config.canvasStartingPoint[0];
+
+              if (x < xLimit) {
+                alert('Координата X не может быть меньше ' + xLimit);
+                return false;
+              }
+
+              const yLimit = refsArray[inputProps.setIndex][0][1] - refsArray[inputProps.setIndex].topOffset;
+
+              if (y < yLimit) {
+                alert('Координата Y не может быть меньше ' + yLimit);
+                return false;
+              }
+
+              refsArray[inputProps.setIndex][3][0] = x + config.canvasStartingPoint[0];
+              refsArray[inputProps.setIndex][3][1] = y + refsArray[inputProps.setIndex].topOffset;
+              refsArray[inputProps.setIndex][2][1] = y + refsArray[inputProps.setIndex].topOffset;
+            }
+
+            if (inputProps.isTuner) {
+              if (x < 0) {
+                alert('Координата X не может быть отрицательной');
+                return false;
+              }
+
+              const xLimit = refsArray[inputProps.setIndex][3][0] - config.canvasStartingPoint[0];
+
+              if (x > xLimit) {
+                alert('Координата X не может быть больше ' + xLimit);
+                return false;
+              }
+
+              refsArray[inputProps.setIndex][1][0] = x + config.canvasStartingPoint[0];
+              refsArray[inputProps.setIndex][2][0] = x + config.canvasStartingPoint[0];
+            }
+          } else {
+            if (x < 0) {
+              alert('Координата X не может быть отрицательной');
+              return false;
+            }
+
+            if (y < 0) {
+              alert('Координата Y не может быть отрицательной');
+              return false;
+            }
+
+            mainCurvePoints[inputProps.pointIndex][0] = x + config.canvasStartingPoint[0];
+            mainCurvePoints[inputProps.pointIndex][1] = y + mainCurvePoints[0][1];
+          }
+
+          inputProps = {};
+          coordsInputsContainer.style('display', 'none');
+          update();
+        }
+      }
+
+      coordsInputX.on('keypress', handleKeyDown);
+      coordsInputY.on('keypress', handleKeyDown);
+      coordsInputX.on('focus', handleFocus);
+      coordsInputY.on('focus', handleFocus);
+      coordsInputX.on('blur', handleBlur);
+      coordsInputY.on('blur', handleBlur);
+    }
+    
     const [x,y] = d3.mouse(this);
 
     if (y >= mainCurvePoints[0][1] && hoverOn === 'targetLine') {
@@ -727,11 +954,6 @@ export default function draw() {
         array[2][0] = clamp(d3.event.x, array[0][0], array[3][0]);
       }
 
-      if (!isLeftHandler && !isRightHandler && isMainCurve) {
-        array[pointIndex][0] = d3.event.x;
-        array[pointIndex][1] = d3.event.y;
-      }
-
       if (!isTuner) {
         let yCoord = null;
 
@@ -751,16 +973,16 @@ export default function draw() {
           array[3][0] = clamp(d3.event.x, leftEdge, width);
         }
 
-        if (isRightHandler && isMainCurve) {
-          array[pointIndex][0] = d3.event.x;
-          array[pointIndex][1] = d3.event.y;
-        }
-
         if (isMainCurve) {
           d3.event.subject.point[1] = d3.event.y;
         } else {
           d3.event.subject.point[1] = yCoord;
         }
+      }
+
+      if (isMainCurve && !isLeftHandler) {
+        array[pointIndex][0] = d3.event.x;
+        array[pointIndex][1] = clamp(d3.event.y, array[0][1], Infinity);
       }
 
       if (!isMainCurve) {
