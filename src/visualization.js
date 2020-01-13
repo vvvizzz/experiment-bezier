@@ -754,6 +754,12 @@ export default function draw() {
         .style('top', `${ S[1] + 15 }px`)
         .style('display', 'block');
 
+      if (coordsInputX.attr('disabled')) {
+        coordsInputY.node().focus();
+      } else {
+        coordsInputX.node().focus();
+      }
+
       function handleKeyDown() {
         if (d3.event.keyCode === 13) {
           const x = parseInt(coordsInputX.node().value, 10);
@@ -1033,7 +1039,7 @@ export default function draw() {
     ctx.stroke();
 
     context.font = "10px Arial";
-    context.fillText(`${ (p.text ? p.text[0] : p.x).toFixed(2) } ${ (p.text ? p.text[1] : p.y).toFixed(2) }`,p.x + 5,p.y - 5);
+    context.fillText(`${ (p.text ? p.text[0] : p.x).toFixed(0) } ${ (p.text ? p.text[1] : p.y).toFixed(0) }`,p.x + 5,p.y - 5);
 
     if (options) {
       ctx.lineWidth = config.defaultLineColor;
