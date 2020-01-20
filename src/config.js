@@ -22,5 +22,5 @@ module.exports = {
   targetPointColor: 'green',
   targetPointWidth: 1,
   targetLineColor: 'darkgreen',
-  targetLineWidth: 4
+  targetLineWidth: 1
 };
