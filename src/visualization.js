@@ -145,6 +145,10 @@ export default function draw() {
     event.preventDefault();
 
     if (event.keyCode === 32) { // space
+      if (coordsInputsContainer.node().style.display === 'block') {
+        return false;
+      }
+
       mainCurvePoints.push([
         mainCurvePoints[mainCurvePoints.length - 1][0] + 75,
         mainCurvePoints[mainCurvePoints.length - 1][1],
@@ -154,6 +158,10 @@ export default function draw() {
     }
 
     if (event.keyCode === 8) { // backspace
+      if (coordsInputsContainer.node().style.display === 'block') {
+        return false;
+      }
+      
       mainCurvePoints.pop();
 
       update();
@@ -761,6 +769,8 @@ export default function draw() {
       } else {
         coordsInputX.node().focus();
       }
+
+      inputIsFocused = true;
 
       function handleKeyDown() {
         if (d3.event.keyCode === 13) {
