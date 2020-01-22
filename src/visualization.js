@@ -18,6 +18,7 @@ const targetPoints = [];
 let curves = [];
 let inputIsFocused = false;
 let prevValue = null;
+let prevYValue = null;
 
 const pointerCircleCoords = {
   x: -100,
@@ -638,7 +639,7 @@ export default function draw() {
   }
 
   d3.select(context.canvas)
-    .call(drag, {radius: 20, refsArray: refsArray, update})
+    .call(drag, {radius: 20, refsArray, update})
     .call(update)
     .node();
 
@@ -690,6 +691,7 @@ export default function draw() {
 
   function handleFocus() {
     inputIsFocused = true;
+    prevYValue = parseInt(this.value, 10);
   };
 
   function handleBlur() {
@@ -803,6 +805,20 @@ export default function draw() {
               refsArray[inputProps.setIndex][3][0] = x + config.canvasStartingPoint[0];
               refsArray[inputProps.setIndex][3][1] = y + refsArray[inputProps.setIndex].topOffset;
               refsArray[inputProps.setIndex][2][1] = y + refsArray[inputProps.setIndex].topOffset;
+
+              const diff = prevYValue - y;
+
+              for (let i = inputProps.setIndex + 1; i < refsArray.length; i++) {
+                for (let j = 0; j < refsArray[i].length; j++) {
+                  refsArray[i][j][1] -= diff;
+                }
+
+                refsArray[i].topOffset = refsArray[i - 1][3][1] + config.refsDistance;
+              }
+
+              for (let k = 0; k < mainCurvePoints.length; k++) {
+                mainCurvePoints[k][1] -= diff;
+              }
             }
 
             if (inputProps.isTuner) {
