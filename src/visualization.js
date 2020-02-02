@@ -2,10 +2,17 @@ import * as d3 from 'd3';
 import Bezier from 'bezier-js';
 import config from './config';
 import clamp from 'lodash/clamp';
-
+let gBezierPath = null;
 import './styles.styl';
+let upd = null;
+var Mode = {
+  kAdding : {value: 0, name: "Adding"},
+  kSelecting : {value: 1, name: "Selecting"},
+  kDragging: {value: 2, name: "Dragging"},
+  kRemoving : {value: 3, name: "Removing"},
+};
 
-var path = document.createElementNS("http://www.w3.org/2000/svg","path");
+let gState = Mode.kSelecting;
 
 const width = 4000;
 const height = 4000;
@@ -124,11 +131,11 @@ export default function draw() {
       mainCurveStartingPoint[1] + config.defaultRefLineYOffset
     ],
     [
-      mainCurveStartingPoint[0] + config.defaultCurveWidth,
+      mainCurveStartingPoint[0] + config.defaultCurveWidth - config.defaultMagnitude,
       mainCurveStartingPoint[1] + config.defaultRefLineYOffset
     ],
     [
-      mainCurveStartingPoint[0] + config.defaultCurveWidth,
+      mainCurveStartingPoint[0] + config.defaultCurveWidth + config.defaultMagnitude,
       mainCurveStartingPoint[1] + config.defaultCurveHeight + config.defaultRefLineYOffset
     ],
     [
@@ -136,6 +143,12 @@ export default function draw() {
       mainCurveStartingPoint[1] + config.defaultCurveHeight + config.defaultRefLineYOffset
     ]
   ];
+
+  mainCurvePoints.forEach(item => {
+    item.angle = Math.PI;
+    item.firstM = config.defaultMagnitude;
+    item.secondM = config.defaultMagnitude;
+  });
 
   window.addEventListener('keydown', function(event) {
     if (inputIsFocused) {
@@ -148,11 +161,21 @@ export default function draw() {
       if (coordsInputsContainer.node().style.display === 'block') {
         return false;
       }
+      const c = [
+        mainCurvePoints[mainCurvePoints.length - 1][0] + 175,
+        mainCurvePoints[mainCurvePoints.length - 1][1] + 50,
+      ]
 
-      mainCurvePoints.push([
-        mainCurvePoints[mainCurvePoints.length - 1][0] + 75,
-        mainCurvePoints[mainCurvePoints.length - 1][1],
-      ]);
+      mainCurvePoints[mainCurvePoints.length - 2].firstM = mainCurvePoints[mainCurvePoints.length - 1].firstM;
+      mainCurvePoints[mainCurvePoints.length - 2].secondM = mainCurvePoints[mainCurvePoints.length - 1].secondM;
+
+      c.angle = Math.PI;
+      c.firstM = config.defaultMagnitude;
+      c.secondM = config.defaultMagnitude;
+
+      mainCurvePoints.push(c);
+
+      gBezierPath.addPoint(new Point(c));
 
       update();
     }
@@ -161,7 +184,7 @@ export default function draw() {
       if (coordsInputsContainer.node().style.display === 'block') {
         return false;
       }
-      
+
       mainCurvePoints.pop();
 
       update();
@@ -311,13 +334,13 @@ export default function draw() {
           const value = parseInt(this.value, 10) + config.canvasStartingPoint[0];
 
           if (!index && (!value || value < config.canvasStartingPoint[0])) {
-            this.focus();
+            // this.focus();
             alert('Укажите неотрицательное значение');
             return false;
           }
 
           if (index && value < (resultsPoints[index - 2] || targetPoints[0])) {
-            this.focus();
+            // this.focus();
             alert(`Укажите значение от ${ (resultsPoints[index - 2] || targetPoints[0]) - 100 }`);
             return false;
           }
@@ -385,36 +408,15 @@ export default function draw() {
       }
     );
 
-    var line = d3.line()
-      .x(d => d[0])
-      .y(d => d[1])
-      .curve(d3.curveLinear)
-      .context(context);
+    mainCurvePoints.forEach((item, index) => {
+      if (!index) {
+        gBezierPath = new BezierPath(new Point(item));
+      } else {
+        gBezierPath.addPoint(new Point(item));
+      }
+    });
 
-    var bezierLine = d3.line()
-      .x(d => d[0])
-      .y(d => d[1])
-      .curve(d3.curveBasis)
-      .context(context);
-
-    var bezierLineRef = d3.line()
-      .x(d => d[0])
-      .y(d => d[1])
-      .curve(d3.curveBasis);
-
-    path.setAttribute('d', bezierLineRef(mainCurvePoints));
-
-    context.beginPath();
-    line(mainCurvePoints);
-    context.lineWidth = config.defaultLineWidth;
-    context.strokeStyle = config.defaultLineColor;
-    context.stroke();
-
-    context.beginPath();
-    bezierLine(mainCurvePoints);
-    context.lineWidth = config.mainLineWidth;
-    context.strokeStyle = config.mainLineColor;
-    context.stroke();
+    gBezierPath.draw(context);
 
     const horizontalConnectLineEndCoords = {
       x: width,
@@ -436,13 +438,6 @@ export default function draw() {
       horizontalConnectMainLineConfig
     );
 
-    mainCurvePoints.forEach((point, index) => {
-      const p = {x: point[0], y: point[1]};
-
-      p.text = [mainCurvePoints[index][0] - mainCurvePoints[0][0], mainCurvePoints[index][1] - mainCurvePoints[0][1]];
-      drawCircle(context, p, 6, {color: 'black', width: 1});
-    });
-
     if (targetPoints.length) {
       targetPoints.forEach((x, index) => {
         let y = null;
@@ -450,7 +445,7 @@ export default function draw() {
         if (x > mainCurvePoints[mainCurvePoints.length - 1][0]) {
           y = mainCurvePoints[mainCurvePoints.length - 1][1];
         } else {
-          y = findYatX(x, path)[1];
+          y = findYatX(x, context);
         }
 
         const p = {
@@ -463,16 +458,6 @@ export default function draw() {
           p.y - mainCurvePoints[0][1],
         ]
 
-        drawCircle(
-          context,
-          p,
-          4,
-          {
-            width: config.targetPointWidth * 2,
-            color: config.targetPointColor
-          }
-        );
-
         if (index === 0) {
           targetLineCoords = [{
             x,
@@ -482,7 +467,7 @@ export default function draw() {
             y: y + refsArray[0][0][1] - refsArray[0].topOffset
           }];
 
-          let startLen = 0;
+          let prevVal = null;
 
           for(let i = refsArray[0][0][0]; i <= refsArray[0][3][0]; i++) {
             const distanceOptions = {
@@ -511,9 +496,9 @@ export default function draw() {
             if (currentX > mainCurvePoints[mainCurvePoints.length - 1][0]) {
               bezierY = mainCurvePoints[mainCurvePoints.length - 1][1];
             } else {
-              const result = findYatX(currentX, path, startLen);
-              bezierY = result[1];
-              startLen = result[2];
+              const result = findYatX(currentX, context, prevVal);
+              bezierY = result;
+              prevVal = result;
             }
 
             if (distance) {
@@ -523,6 +508,8 @@ export default function draw() {
               });
             }
           }
+
+          prevVal = null;
 
           targetLineCoords.push({
             x: width,
@@ -541,6 +528,16 @@ export default function draw() {
           context.strokeStyle = config.targetLineColor;
           context.stroke();
         }
+
+        drawCircle(
+          context,
+          p,
+          4,
+          {
+            width: config.targetPointWidth * 2,
+            color: config.targetPointColor
+          }
+        );
       });
     }
 
@@ -634,7 +631,7 @@ export default function draw() {
         var line = d3.line()
           .x(d => d.x)
           .y(d => d.y)
-          .curve(d3.curveLinear)
+          .curve(d3.curveCatmullRom)
           .context(context);
 
         context.beginPath();
@@ -645,7 +642,7 @@ export default function draw() {
       });
     }
   }
-
+upd = update;
   d3.select(context.canvas)
     .call(drag, {radius: 20, refsArray, update})
     .call(update)
@@ -690,7 +687,7 @@ export default function draw() {
   };
 
   d3.select(context.canvas)
-    .on('mousemove', handleMouseMove)
+    // .on('mousemove', handleMouseMove)
     .on('click', handleClick);
 
   let hoverOn = null;
@@ -737,7 +734,7 @@ export default function draw() {
       coordsInputY.attr('title', '');
 
       coordsInputX.property('value', S[0] - config.canvasStartingPoint[0]);
-      
+
       if (inputProps.isMainCurve) {
         coordsInputY.property('value', S[1] - mainCurvePoints[0][1]);
 
@@ -790,7 +787,7 @@ export default function draw() {
                 alert('Координата Y не может быть больше ' + yLimitk);
                 return false;
               }
-              
+
               refsArray[inputProps.setIndex][0][0] = x + config.canvasStartingPoint[0];
               refsArray[inputProps.setIndex][0][1] = y + refsArray[inputProps.setIndex].topOffset;
               refsArray[inputProps.setIndex][1][1] = y + refsArray[inputProps.setIndex].topOffset;
@@ -874,8 +871,11 @@ export default function draw() {
       coordsInputY.on('focus', handleFocus);
       coordsInputX.on('blur', handleBlur);
       coordsInputY.on('blur', handleBlur);
+    } else {
+      const pos = new Point(d3.mouse(this));
+      handleUp(pos, canvas);
     }
-    
+
     const [x,y] = d3.mouse(this);
 
     if (y >= mainCurvePoints[0][1] && hoverOn === 'targetLine') {
@@ -1065,7 +1065,8 @@ export default function draw() {
     ctx.stroke();
 
     context.font = "10px Arial";
-    context.fillText(`${ (p.text ? p.text[0] : p.x).toFixed(0) } ${ (p.text ? p.text[1] : p.y).toFixed(0) }`,p.x + 5,p.y - 5);
+    context
+      .fillText(`${ (p.text ? p.text[0] : p.x).toFixed(0) } ${ (p.text ? p.text[1] : p.y).toFixed(0) }`,p.x + 5,p.y - 5);
 
     if (options) {
       ctx.lineWidth = config.defaultLineColor;
@@ -1246,13 +1247,413 @@ function getValOnCubicBezier_givenXorX(options) {
     }
   }
 }
+let selected
+function handleUp(pos, canvas) {
+  if (gState == Mode.kDragging) {
+    canvas.removeEventListener("mousemove", updateSelected, false);
+    gBezierPath.clearSelected();
+    gState = Mode.kSelecting;
+  } else {
+    if (!gBezierPath)
+      return false;
+    selected = gBezierPath.selectPoint(pos);
 
-function findYatX(x, linePath, startLen) {
-  function getXY(len) {
-    var point = linePath.getPointAtLength(len);
-    return [point.x, point.y, len];
+    if (selected) {
+      gState = Mode.kDragging;
+      canvas.addEventListener("mousemove", updateSelected, false);
+    }
   }
-  var curlen = startLen || 0;
-  while (getXY(curlen)[0] < x) { curlen += 1; }
-  return getXY(curlen);
+}
+
+function findYatX(x, context, prev) {
+  let y = prev || (mainCurvePoints[0][1] - 10);
+  let t = 1;
+
+  let v = context.getImageData(x, y, 1, 1).data[2];
+
+  while (v !== 139) {
+    if (prev) {
+      if (t % 2) {
+        y = y - t;
+      } else {
+        y = y + t;
+      }
+
+      if (y < 0) {
+        break;
+      }
+
+      t++;
+    } else {
+      y = y + 1;
+    }
+
+    if (y > mainCurvePoints[mainCurvePoints.length - 1][1] + 800) {
+      return prev || (mainCurvePoints[0][1] - 10);
+    }
+
+    v = context.getImageData(x, y, 1, 1).data[2];
+  }
+
+  console.log('x', x, 'y', y);
+  return y;
+}
+
+
+function updateSelected(e) {
+  gBezierPath.updateSelected(new Point([e.pageX, e.pageY]));
+  upd();
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// Classes
+///////////////////////////////////////////////////////////////////////////////
+function Point(coord)
+{
+  var my = this;
+  var xVal = coord[0];
+  var yVal = coord[1];
+  var angle = coord.angle;
+
+  var RADIUS = 5;
+  var SELECT_RADIUS = RADIUS + 2;
+
+  this.angle = function() {
+    return angle;
+  }
+
+  this.x = function () {
+    return xVal;
+  }
+
+  this.y = function () {
+    return yVal;
+  }
+
+  this.set = function(x, y) {
+    xVal = x;
+    yVal = y;
+  };
+
+  this.drawSquare = function(ctx) {
+    ctx.fillRect(xVal - RADIUS, yVal - RADIUS, RADIUS * 2, RADIUS * 2);
+  };
+
+  this.computeSlope = function(pt) {
+    return (pt.y() - yVal) / (pt.x() - xVal);
+  };
+
+  this.contains = function(pt) {
+    var xInRange = pt.x() >= xVal - SELECT_RADIUS && pt.x() <= xVal + SELECT_RADIUS;
+    var yInRange = pt.y() >= yVal - SELECT_RADIUS && pt.y() <= yVal + SELECT_RADIUS;
+    return xInRange && yInRange;
+  };
+
+  this.offsetFrom = function(pt) {
+    return {
+      xDelta : pt.x() - xVal,
+      yDelta : pt.y() - yVal,
+    };
+  };
+
+  this.translate = function(xDelta, yDelta) {
+    xVal += xDelta;
+    yVal += yDelta;
+  };
+}
+
+function ControlPoint(angle, magnitude, owner, isFirst, index) {
+  var my = this;
+
+  var _angle = angle;
+  var _magnitude = magnitude;
+  var _index = index;
+
+  // Pointer to the line segment to which this belongs.
+  var _owner = owner;
+  var _isFirst = isFirst;
+
+  this.setAngle = function(deg) {
+    // don't update neighbor in risk of infinite loop!
+    // TODO fixme fragile
+    if (_angle != deg)
+      _angle = deg;
+  }
+
+  this.origin = function origin() {
+    var line = null;
+
+
+
+    if (_isFirst)
+      line = _owner.prev;
+    else
+      line = _owner;
+    if (line) {
+      const coord = [line.pt.x(), line.pt.y()];
+      // coord.angle = angle;
+      return new Point(coord);
+    }
+
+    return null;
+  }
+
+  // Returns the Point at which the knob is located.
+  this.asPoint = function() {
+    const coord = [my.x(), my.y()];
+    coord.angle = angle;
+    return new Point(coord);
+  };
+
+  this.x = function () {
+    return  my.origin().x() + my.xDelta();
+  }
+
+  this.y = function () {
+    return my.origin().y() + my.yDelta();
+  }
+
+  this.xDelta = function() {
+    return _magnitude * Math.cos(_angle);
+  }
+
+  this.yDelta = function() {
+    return _magnitude * Math.sin(_angle);
+  }
+
+  function computeMagnitudeAngleFromOffset(xDelta, yDelta) {
+    _magnitude = Math.sqrt(Math.pow(xDelta, 2) + Math.pow(yDelta, 2));
+console.log('_index ==>', _index)
+    console.log('isFirst ==>', isFirst)
+    mainCurvePoints[_index][isFirst ? 'firstM' : 'secondM'] = _magnitude;
+    var tryAngle = Math.atan(yDelta /xDelta);
+    if (!isNaN(tryAngle)) {
+      _angle = tryAngle;
+      if (xDelta < 0)
+        _angle += Math.PI;
+    }
+
+    if (isFirst) {
+      mainCurvePoints[_index].angle = Math.PI + _angle;
+    } else {
+      if (index !== mainCurvePoints.length - 1) {
+        mainCurvePoints[_index + 1].angle = _angle;
+      } else {
+        mainCurvePoints[_index].angle = _angle;
+      }
+    }
+  }
+
+  this.translate = function(xDelta, yDelta) {
+    var newLoc = my.asPoint();
+
+    newLoc.translate(xDelta, yDelta);
+    var dist = my.origin().offsetFrom(newLoc);
+    computeMagnitudeAngleFromOffset(dist.xDelta, dist.yDelta);
+    if (my.__proto__.syncNeighbor)
+      updateNeighbor();
+  };
+
+  function updateNeighbor() {
+    var neighbor = null;
+    if (_isFirst && _owner.prev)
+      neighbor = _owner.prev.ctrlPt2;
+    else if (!_isFirst && _owner.next)
+      neighbor = _owner.next.ctrlPt1;
+    if (neighbor)
+      neighbor.setAngle(_angle + Math.PI);
+  }
+
+  this.contains = function(pt) {
+    return my.asPoint().contains(pt);
+  }
+
+  this.offsetFrom = function(pt) {
+    return my.asPoint().offsetFrom(pt);
+  }
+
+  this.draw = function(ctx) {
+    ctx.save();
+    ctx.fillStyle = 'gray';
+    ctx.strokeStyle = 'gray';
+    ctx.beginPath();
+    var startPt = my.origin();
+    var endPt = my.asPoint();
+    ctx.moveTo(startPt.x(), startPt.y());
+    ctx.lineTo(endPt.x(), endPt.y());
+    ctx.stroke();
+    endPt.drawSquare(ctx);
+    ctx.restore();
+  }
+
+  // When Constructed
+  if (my.__proto__.syncNeighbor)
+    updateNeighbor();
+}
+
+// Static variable dictacting if neighbors must be kept in sync.
+ControlPoint.prototype.syncNeighbor = true;
+
+function LineSegment(pt, prev) {
+  var my = this;
+
+  // Path point.
+  this.pt;
+  // Control point 1.
+  this.ctrlPt1;
+  // Control point 2.
+  this.ctrlPt2;
+
+  // Next LineSegment in path
+  this.next;
+  // Previous LineSegment in path
+  this.prev;
+
+  // Specific point on the LineSegment that is selected.
+  this.selectedPoint;
+
+  init();
+
+  this.draw = function(ctx) {
+    my.pt.drawSquare(ctx);
+    // Draw control points if we have them
+    if (my.ctrlPt1)
+      my.ctrlPt1.draw(ctx);
+    if (my.ctrlPt2)
+      my.ctrlPt2.draw(ctx);
+
+    // If there are at least two points, draw curve.
+    if (my.prev)
+      drawCurve(ctx, my.prev.pt, my.pt, my.ctrlPt1, my.ctrlPt2);
+  }
+
+  this.findInLineSegment = function(pos) {
+    if (my.pathPointIntersects(pos)) {
+      my.selectedPoint = my.pt;
+      return true;
+    } else if (my.ctrlPt1 && my.ctrlPt1.contains(pos)) {
+      my.selectedPoint = my.ctrlPt1;
+      return true;
+    } else if (my.ctrlPt2 && my.ctrlPt2.contains(pos)) {
+      my.selectedPoint = my.ctrlPt2;
+      return true;
+    }
+    return false;
+  }
+
+  this.pathPointIntersects = function(pos) {
+    return my.pt && my.pt.contains(pos);
+  }
+
+  this.moveTo = function(pos) {
+    var dist = my.selectedPoint.offsetFrom(pos);
+    my.selectedPoint.translate(dist.xDelta, dist.yDelta);
+  };
+
+  function drawCurve(ctx, startPt, endPt, ctrlPt1, ctrlPt2) {
+    ctx.save();
+    ctx.lineWidth = config.mainLineWidth;
+    ctx.fillStyle = config.mainLineColor;
+    ctx.strokeStyle = config.mainLineColor;
+    ctx.beginPath();
+    ctx.moveTo(startPt.x(), startPt.y());
+    ctx.bezierCurveTo(ctrlPt1.x(), ctrlPt1.y(), ctrlPt2.x(), ctrlPt2.y(), endPt.x(), endPt.y());
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function init() {
+    my.pt = pt;
+    my.prev = prev;
+
+    const index = mainCurvePoints.findIndex(item => item[0] === my.pt.x() && item[1] === my.pt.y());
+
+    let ind = index - 1;
+
+    if (index === mainCurvePoints.length - 1) {
+      ind = index;
+    }
+
+    if (my.prev) {
+      my.ctrlPt1 = new ControlPoint(
+        mainCurvePoints[index - 1].angle + Math.PI,
+        mainCurvePoints[index - 1].firstM,
+        my,
+        true,
+        index - 1);
+
+      my.ctrlPt2 = new ControlPoint(
+        mainCurvePoints[ind].angle,
+        mainCurvePoints[ind].secondM,
+        my,
+        false,
+        ind);
+    }
+  };
+}
+var selectedSegment
+function BezierPath(startPoint)
+{
+  var my = this;
+  // Beginning of BezierPath linked list.
+  this.head = null;
+  // End of BezierPath linked list
+  this.tail = null;
+  // Reference to selected LineSegment
+  // var selectedSegment;
+
+  this.addPoint = function(pt) {
+    var newPt = new LineSegment(pt, my.tail);
+    if (my.tail == null) {
+      my.tail = newPt;
+      my.head = newPt;
+    } else {
+      my.tail.next = newPt;
+      my.tail = my.tail.next;
+    }
+    return newPt;
+  };
+
+  // Must call after add point, since init uses
+  // addPoint
+  // TODO: this is a little gross
+  init();
+
+  this.draw = function(ctx) {
+    if (my.head == null)
+      return;
+
+    var current = my.head;
+
+    while (current != null) {
+      current.draw(ctx);
+      current = current.next;
+    }
+  };
+
+  // returns true if point selected
+  this.selectPoint = function(pos) {
+    var current = my.head;
+
+    while (current != null) {
+      if (current.findInLineSegment(pos)) {
+        selectedSegment = current;
+        return true;
+      }
+      current = current.next;
+    }
+    return false;
+  }
+
+  this.clearSelected = function() {
+    selectedSegment = null;
+  }
+
+  this.updateSelected = function(pos) {
+    selectedSegment.moveTo(pos);
+  }
+
+  function init() {
+    my.addPoint(startPoint);
+  };
 }

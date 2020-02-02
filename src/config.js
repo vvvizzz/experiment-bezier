@@ -4,7 +4,7 @@ module.exports = {
   defaultCurveWidth: 400,
   defaultLineWidth: 1,
   defaultLineColor: 'black',
-  defaultRefLineYOffset: 10,
+  defaultRefLineYOffset: 20,
   refLineColor: 'blue',
   refLineWidth: 2,
   refsDistance: 30,
@@ -22,5 +22,6 @@ module.exports = {
   targetPointColor: 'green',
   targetPointWidth: 1,
   targetLineColor: 'darkgreen',
-  targetLineWidth: 1
+  targetLineWidth: 1,
+  defaultMagnitude: 50,
 };

@@ -47,6 +47,7 @@
     "clean-webpack-plugin": "^0.1.9",
     "copy-webpack-plugin": "^4.0.1",
     "css-loader": "^0.28.11",
+    "cubic-spline": "^3.0.3",
     "d3": "^5.0.1",
     "eslint": "^6.0.1",
     "eslint-config-airbnb": "^8.0.0",
