@@ -742,7 +742,7 @@ upd = update;
         inputProps = {};
         coordsInputsContainer.style('display', 'none');
         update();
-
+console.log('mainCurvePoints ==>', mainCurvePoints)
         return false;
       }
 
@@ -871,7 +871,7 @@ upd = update;
   coordsInputX.on('blur', handleBlur);
   coordsInputY.on('blur', handleBlur);
 
-  context.canvas.addEventListener('dblclick', (event) => {
+  context.canvas.addEventListener('click', (event) => {
     const handlesCoords = [];
 
     mainCurvePoints.forEach((point, index) => {
@@ -902,7 +902,7 @@ upd = update;
     });
 
     let S = null;
-    let R = 16;
+    let R = 24;
     let ind = null;
     let isFirst = null;
     let point = null;
@@ -934,8 +934,8 @@ upd = update;
 
     coordsInputX.node().focus();
 
-    coordsInputX.property('value', S[0] - config.canvasStartingPoint[0]);
-    coordsInputY.property('value', S[1] - mainCurvePoints[0][1]);
+    coordsInputX.property('value', (S[0] - config.canvasStartingPoint[0]).toFixed(0));
+    coordsInputY.property('value', (S[1] - mainCurvePoints[0][1]).toFixed(0));
 
     inputIsFocused = true;
     inputProps.isHandleInput = true;
@@ -988,17 +988,17 @@ upd = update;
       coordsInputY.attr('disabled', null);
       coordsInputY.attr('title', '');
 
-      coordsInputX.property('value', S[0] - config.canvasStartingPoint[0]);
+      coordsInputX.property('value', (S[0] - config.canvasStartingPoint[0]).toFixed(0));
 
       if (inputProps.isMainCurve) {
-        coordsInputY.property('value', S[1] - mainCurvePoints[0][1]);
+        coordsInputY.property('value', (S[1] - mainCurvePoints[0][1]).toFixed(0));
 
         if (inputProps.pointIndex === 0) {
           coordsInputX.attr('disabled', true);
           coordsInputX.attr('title', 'Изменение координаты X для этой точки не возможно');
         }
       } else {
-        coordsInputY.property('value', S[1] - refsArray[inputProps.setIndex].topOffset);
+        coordsInputY.property('value', (S[1] - refsArray[inputProps.setIndex].topOffset).toFixed(0));
 
         if (inputProps.isLeftHandler) {
           coordsInputX.attr('disabled', true);
