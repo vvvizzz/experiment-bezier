@@ -101,8 +101,16 @@ export default function draw() {
     refsArray.push(currentPoints);
 
     for (let k = 0; k < mainCurvePoints.length; k++) {
-      mainCurvePoints[k][1] += currentPoints[3][1] - currentPoints[0][1] + config.refsDistance
-        + config.defaultRefLineYOffset;
+      const adder = currentPoints[3][1] - currentPoints[0][1] + config.refsDistance + config.defaultRefLineYOffset;
+      mainCurvePoints[k][1] += adder;
+
+      if (mainCurvePoints[k].firstMY) {
+        mainCurvePoints[k].firstMY += adder;
+      }
+
+      if (mainCurvePoints[k].secondMY) {
+        mainCurvePoints[k].secondMY += adder;
+      }
     }
 
     plusButton
@@ -144,10 +152,20 @@ export default function draw() {
     ]
   ];
 
-  mainCurvePoints.forEach(item => {
+  mainCurvePoints.forEach((item, index) => {
     item.angle = Math.PI;
     item.firstM = config.defaultMagnitude;
     item.secondM = config.defaultMagnitude;
+
+    if (index) {
+      item.firstMX = item[0] - config.defaultMagnitude;
+      item.firstMY = item[1];
+    }
+
+    if (index !== mainCurvePoints.length - 1) {
+      item.secondMX = item[0] + config.defaultMagnitude;
+      item.secondMY = item[1];
+    }
   });
 
   window.addEventListener('keydown', function(event) {
@@ -166,12 +184,17 @@ export default function draw() {
         mainCurvePoints[mainCurvePoints.length - 1][1] + 50,
       ]
 
-      mainCurvePoints[mainCurvePoints.length - 2].firstM = mainCurvePoints[mainCurvePoints.length - 1].firstM;
       mainCurvePoints[mainCurvePoints.length - 2].secondM = mainCurvePoints[mainCurvePoints.length - 1].secondM;
+
+      const source = mainCurvePoints[mainCurvePoints.length - 1];
+      source.secondMX = source[0] - config.defaultMagnitude * Math.cos(source.angle);
+      source.secondMY = source[1] - config.defaultMagnitude * Math.sin(source.angle);
 
       c.angle = Math.PI;
       c.firstM = config.defaultMagnitude;
       c.secondM = config.defaultMagnitude;
+      c.firstMX = c[0] - config.defaultMagnitude;
+      c.firstMY = c[1];
 
       mainCurvePoints.push(c);
 
@@ -207,8 +230,17 @@ export default function draw() {
     resultsPoints.pop();
 
     for (let k = 0; k < mainCurvePoints.length; k++) {
-      mainCurvePoints[k][1] -= removedCurvePoints[3][1] - removedCurvePoints[0][1] + config.refsDistance
-        + config.defaultRefLineYOffset;
+      const remover = removedCurvePoints[3][1] - removedCurvePoints[0][1] + config.refsDistance
+        + config.defaultRefLineYOffset
+      mainCurvePoints[k][1] -= remover;
+
+      if (mainCurvePoints[k].firstMY) {
+        mainCurvePoints[k].firstMY -= remover;
+      }
+
+      if (mainCurvePoints[k].secondMY) {
+        mainCurvePoints[k].secondMY -= remover;
+      }
     }
 
     plusButton
@@ -306,6 +338,14 @@ export default function draw() {
 
         mainCurvePoints.forEach(item => {
           item[1] = item[1] + maxTop;
+
+          if (item.firstMY) {
+            item.firstMY = item.firstMY + maxTop;
+          }
+
+          if (item.secondMY) {
+            item.secondMY = item.secondMY + maxTop;
+          }
         });
 
         refsArray.splice(index + 1, 0, newItem);
@@ -643,52 +683,267 @@ export default function draw() {
     }
   }
 upd = update;
+
   d3.select(context.canvas)
     .call(drag, {radius: 20, refsArray, update})
     .call(update)
     .node();
 
-  function handleMouseMove(){
-    var xy = d3.mouse(this);
-
-    var color = context.getImageData(xy[0], xy[1], 1, 1).data;
-
-    let wasCatch = false;
-
-    if (color[2] > 135 && color[2] < 145) { // blue
-      if (pointerCircleCoords.x !== xy[0] && pointerCircleCoords.y !== xy[1]) {
-        wasCatch = true;
-        hoverOn = 'targetLine';
-        pointerCircleCoords.x = xy[0];
-        pointerCircleCoords.y = xy[1];
-        update();
-      }
-    } else if (pointerCircleCoords.x !== -100) {
-      hoverOn = null;
-      pointerCircleCoords.x = -100;
-      pointerCircleCoords.y = -100;
-      update();
-    }
-
-    if (color[1] > 95 && color[1] < 105) { // green
-      if (pointerCircleCoords.x !== xy[0] && pointerCircleCoords.y !== xy[1]) {
-        hoverOn = 'resultsLine';
-        pointerCircleCoords.x = xy[0];
-        pointerCircleCoords.y = xy[1];
-        pointerCircleCoords.y = xy[1];
-        update();
-      }
-    } else if (pointerCircleCoords.x !== -100 && !wasCatch) {
-      pointerCircleCoords.x = -100;
-      pointerCircleCoords.y = -100;
-      hoverOn = null;
-      update();
-    }
-  };
-
   d3.select(context.canvas)
-    // .on('mousemove', handleMouseMove)
     .on('click', handleClick);
+
+  function handleKeyDown() {
+    if (d3.event.keyCode === 13) {
+      let x = parseInt(coordsInputX.node().value, 10);
+      let y = parseInt(coordsInputY.node().value, 10);
+      
+      if (inputProps.isHandleInput) {
+        x += config.canvasStartingPoint[0];
+        y += mainCurvePoints[0][1];
+
+        const isFirst = inputProps.isFirst;
+        const _index = inputProps.handleIndex;
+        const source = inputProps.point;
+        const xDelta = x - source[0];
+        const yDelta = y - source[1];
+
+        let _magnitude = Math.sqrt(Math.pow(xDelta, 2) + Math.pow(yDelta, 2));
+        let _angle = null;
+
+        source[`${ inputProps.path }X`] = source[0] + xDelta;
+        source[`${ inputProps.path }Y`] = source[1] + yDelta;
+
+        mainCurvePoints[_index][isFirst ? 'firstM' : 'secondM'] = _magnitude;
+
+        var tryAngle = Math.atan(yDelta /xDelta);
+
+        if (!isNaN(tryAngle)) {
+          _angle = tryAngle;
+          if (xDelta < 0)
+            _angle += Math.PI;
+        }
+
+        // update heighbour
+        const path = inputProps.path === 'firstM' ? 'secondM' : 'firstM';
+
+        source[`${ path }X`] = source[0] - source[!isFirst ? 'firstM' : 'secondM'] * Math.cos( _angle);
+        source[`${ path }Y`] = source[1] - source[!isFirst ? 'firstM' : 'secondM'] * Math.sin( _angle);
+
+        if (isFirst) {
+          mainCurvePoints[_index].angle = Math.PI + _angle;
+        } else {
+          if (_index !== mainCurvePoints.length - 1) {
+            mainCurvePoints[_index + 1].angle = _angle;
+          } else {
+            mainCurvePoints[_index].angle = _angle;
+          }
+        }
+
+        inputProps = {};
+        coordsInputsContainer.style('display', 'none');
+        update();
+
+        return false;
+      }
+
+      if (!inputProps.isMainCurve) {
+        if (inputProps.isLeftHandler) {
+          if (y < 0) {
+            alert('Координата Y не может быть отрицательной');
+            return false;
+          }
+
+          const yLimit = refsArray[inputProps.setIndex][3][1] - refsArray[inputProps.setIndex].topOffset;
+
+          if (y > yLimit) {
+            alert('Координата Y не может быть больше ' + yLimit);
+            return false;
+          }
+
+          refsArray[inputProps.setIndex][0][0] = x + config.canvasStartingPoint[0];
+          refsArray[inputProps.setIndex][0][1] = y + refsArray[inputProps.setIndex].topOffset;
+          refsArray[inputProps.setIndex][1][1] = y + refsArray[inputProps.setIndex].topOffset;
+        }
+
+
+        if (inputProps.isRightHandler) {
+          const xLimit = refsArray[inputProps.setIndex][1][0] - config.canvasStartingPoint[0];
+
+          if (x < xLimit) {
+            alert('Координата X не может быть меньше ' + xLimit);
+            return false;
+          }
+
+          const yLimit = refsArray[inputProps.setIndex][0][1] - refsArray[inputProps.setIndex].topOffset;
+
+          if (y < yLimit) {
+            alert('Координата Y не может быть меньше ' + yLimit);
+            return false;
+          }
+
+          refsArray[inputProps.setIndex][3][0] = x + config.canvasStartingPoint[0];
+          refsArray[inputProps.setIndex][3][1] = y + refsArray[inputProps.setIndex].topOffset;
+          refsArray[inputProps.setIndex][2][1] = y + refsArray[inputProps.setIndex].topOffset;
+
+          const diff = prevYValue - y;
+
+          for (let i = inputProps.setIndex + 1; i < refsArray.length; i++) {
+            for (let j = 0; j < refsArray[i].length; j++) {
+              refsArray[i][j][1] -= diff;
+            }
+
+            refsArray[i].topOffset = refsArray[i - 1][3][1] + config.refsDistance;
+          }
+
+          for (let k = 0; k < mainCurvePoints.length; k++) {
+            mainCurvePoints[k][1] -= diff;
+
+            if (mainCurvePoints[k].firstMY) {
+              mainCurvePoints[k].firstMY -= diff;
+            }
+
+            if (mainCurvePoints[k].secondMY) {
+              mainCurvePoints[k].secondMY -= diff;
+            }
+          }
+        }
+
+        if (inputProps.isTuner) {
+          if (x < 0) {
+            alert('Координата X не может быть отрицательной');
+            return false;
+          }
+
+          const xLimit = refsArray[inputProps.setIndex][3][0] - config.canvasStartingPoint[0];
+
+          if (x > xLimit) {
+            alert('Координата X не может быть больше ' + xLimit);
+            return false;
+          }
+
+          refsArray[inputProps.setIndex][1][0] = x + config.canvasStartingPoint[0];
+          refsArray[inputProps.setIndex][2][0] = x + config.canvasStartingPoint[0];
+        }
+      } else {
+        if (x < 0) {
+          alert('Координата X не может быть отрицательной');
+          return false;
+        }
+
+        if (y < 0) {
+          alert('Координата Y не может быть отрицательной');
+          return false;
+        }
+
+        const xDiff = x + config.canvasStartingPoint[0] - mainCurvePoints[inputProps.pointIndex][0];
+        const yDiff = y + mainCurvePoints[0][1] - mainCurvePoints[inputProps.pointIndex][1];
+
+        mainCurvePoints[inputProps.pointIndex][0] = x + config.canvasStartingPoint[0];
+        mainCurvePoints[inputProps.pointIndex][1] = y + mainCurvePoints[0][1];
+
+        if (mainCurvePoints[inputProps.pointIndex].firstMX) {
+          mainCurvePoints[inputProps.pointIndex].firstMX += xDiff;
+        }
+
+        if (mainCurvePoints[inputProps.pointIndex].secondMX) {
+          mainCurvePoints[inputProps.pointIndex].secondMX += xDiff;
+        }
+
+        if (mainCurvePoints[inputProps.pointIndex].firstMY) {
+          mainCurvePoints[inputProps.pointIndex].firstMY += yDiff;
+        }
+
+        if (mainCurvePoints[inputProps.pointIndex].secondMY) {
+          mainCurvePoints[inputProps.pointIndex].secondMY += yDiff;
+        }
+      }
+
+      inputProps = {};
+      coordsInputsContainer.style('display', 'none');
+      update();
+    }
+  }
+
+  coordsInputX.on('keypress', handleKeyDown);
+  coordsInputY.on('keypress', handleKeyDown);
+  coordsInputX.on('focus', handleFocus);
+  coordsInputY.on('focus', handleFocus);
+  coordsInputX.on('blur', handleBlur);
+  coordsInputY.on('blur', handleBlur);
+
+  context.canvas.addEventListener('dblclick', (event) => {
+    const handlesCoords = [];
+
+    mainCurvePoints.forEach((point, index) => {
+      if (index !== 0) {
+        const a = [point.firstMX, point.firstMY];
+
+        a.point = point;
+        a.path = 'firstM';
+        handlesCoords.push(a);
+      }
+
+      if (index !== mainCurvePoints.length - 1) {
+        const a = [point.secondMX, point.secondMY];
+
+        a.point = point;
+        a.path = 'secondM';
+        handlesCoords.push(a);
+      }
+    });
+
+    handlesCoords.forEach((item, index) => {
+      item.isFirst = !(index % 2);
+      item.index = Math.floor(index/2);
+
+      if (index === handlesCoords.length - 1) {
+        item.index++;
+      }
+    });
+
+    let S = null;
+    let R = 16;
+    let ind = null;
+    let isFirst = null;
+    let point = null;
+    let path = null;
+
+    for (const p of handlesCoords) {
+      const top = window.pageYOffset || document.documentElement.scrollTop;
+      const left = window.pageXOffset || document.documentElement.scrollLeft;
+      let r = Math.hypot(event.clientX + left - p[0], event.clientY + top - p[1]);
+
+      if (r < R) {
+        R = r;
+        S = p;
+        ind = S.index;
+        isFirst = S.isFirst;
+        point = S.point;
+        path = S.path;
+      }
+    }
+
+    if (!S) {
+      return false;
+    }
+
+    coordsInputsContainer
+      .style('left', `${ S[0] + 15 }px`)
+      .style('top', `${ S[1] + 15 }px`)
+      .style('display', 'block');
+
+    coordsInputX.node().focus();
+
+    coordsInputX.property('value', S[0] - config.canvasStartingPoint[0]);
+    coordsInputY.property('value', S[1] - mainCurvePoints[0][1]);
+
+    inputIsFocused = true;
+    inputProps.isHandleInput = true;
+    inputProps.handleIndex = ind;
+    inputProps.isFirst = isFirst;
+    inputProps.point = point;
+    inputProps.path = path;
+  });
 
   let hoverOn = null;
 
@@ -769,111 +1024,10 @@ upd = update;
 
       inputIsFocused = true;
 
-      function handleKeyDown() {
-        if (d3.event.keyCode === 13) {
-          const x = parseInt(coordsInputX.node().value, 10);
-          const y = parseInt(coordsInputY.node().value, 10);
 
-          if (!inputProps.isMainCurve) {
-            if (inputProps.isLeftHandler) {
-              if (y < 0) {
-                alert('Координата Y не может быть отрицательной');
-                return false;
-              }
-
-              const yLimit = refsArray[inputProps.setIndex][3][1] - refsArray[inputProps.setIndex].topOffset;
-
-              if (y > yLimit) {
-                alert('Координата Y не может быть больше ' + yLimitk);
-                return false;
-              }
-
-              refsArray[inputProps.setIndex][0][0] = x + config.canvasStartingPoint[0];
-              refsArray[inputProps.setIndex][0][1] = y + refsArray[inputProps.setIndex].topOffset;
-              refsArray[inputProps.setIndex][1][1] = y + refsArray[inputProps.setIndex].topOffset;
-            }
-
-
-            if (inputProps.isRightHandler) {
-              const xLimit = refsArray[inputProps.setIndex][1][0] - config.canvasStartingPoint[0];
-
-              if (x < xLimit) {
-                alert('Координата X не может быть меньше ' + xLimit);
-                return false;
-              }
-
-              const yLimit = refsArray[inputProps.setIndex][0][1] - refsArray[inputProps.setIndex].topOffset;
-
-              if (y < yLimit) {
-                alert('Координата Y не может быть меньше ' + yLimit);
-                return false;
-              }
-
-              refsArray[inputProps.setIndex][3][0] = x + config.canvasStartingPoint[0];
-              refsArray[inputProps.setIndex][3][1] = y + refsArray[inputProps.setIndex].topOffset;
-              refsArray[inputProps.setIndex][2][1] = y + refsArray[inputProps.setIndex].topOffset;
-
-              const diff = prevYValue - y;
-
-              for (let i = inputProps.setIndex + 1; i < refsArray.length; i++) {
-                for (let j = 0; j < refsArray[i].length; j++) {
-                  refsArray[i][j][1] -= diff;
-                }
-
-                refsArray[i].topOffset = refsArray[i - 1][3][1] + config.refsDistance;
-              }
-
-              for (let k = 0; k < mainCurvePoints.length; k++) {
-                mainCurvePoints[k][1] -= diff;
-              }
-            }
-
-            if (inputProps.isTuner) {
-              if (x < 0) {
-                alert('Координата X не может быть отрицательной');
-                return false;
-              }
-
-              const xLimit = refsArray[inputProps.setIndex][3][0] - config.canvasStartingPoint[0];
-
-              if (x > xLimit) {
-                alert('Координата X не может быть больше ' + xLimit);
-                return false;
-              }
-
-              refsArray[inputProps.setIndex][1][0] = x + config.canvasStartingPoint[0];
-              refsArray[inputProps.setIndex][2][0] = x + config.canvasStartingPoint[0];
-            }
-          } else {
-            if (x < 0) {
-              alert('Координата X не может быть отрицательной');
-              return false;
-            }
-
-            if (y < 0) {
-              alert('Координата Y не может быть отрицательной');
-              return false;
-            }
-
-            mainCurvePoints[inputProps.pointIndex][0] = x + config.canvasStartingPoint[0];
-            mainCurvePoints[inputProps.pointIndex][1] = y + mainCurvePoints[0][1];
-          }
-
-          inputProps = {};
-          coordsInputsContainer.style('display', 'none');
-          update();
-        }
-      }
-
-      coordsInputX.on('keypress', handleKeyDown);
-      coordsInputY.on('keypress', handleKeyDown);
-      coordsInputX.on('focus', handleFocus);
-      coordsInputY.on('focus', handleFocus);
-      coordsInputX.on('blur', handleBlur);
-      coordsInputY.on('blur', handleBlur);
     } else {
-      const pos = new Point(d3.mouse(this));
-      handleUp(pos, canvas);
+      // const pos = new Point(d3.mouse(this));
+      // handleUp(pos, canvas);
     }
 
     const [x,y] = d3.mouse(this);
@@ -990,8 +1144,28 @@ upd = update;
         let yCoord = null;
 
         if (isLeftHandler) {
+          const yDiff = clamp(d3.event.y, array.topOffset, array[array.length - 1][1]) - array[1][1];
+
           yCoord = clamp(d3.event.y, array.topOffset, array[array.length - 1][1]);
           array[1][1] = yCoord;
+
+          if (isMainCurve) {
+            if (array[pointIndex].firstMY) {
+              array[pointIndex].firstMY += yDiff;
+            }
+
+            if (array[pointIndex].secondMY) {
+              array[pointIndex].secondMY += yDiff;
+            }
+
+            if (array[pointIndex + 1].firstMY) {
+              array[pointIndex + 1].firstMY += yDiff;
+            }
+
+            if (array[pointIndex + 1].secondMY) {
+              array[pointIndex + 1].secondMY += yDiff;
+            }
+          }
         }
 
         if (isRightHandler && !isMainCurve) {
@@ -1013,8 +1187,27 @@ upd = update;
       }
 
       if (isMainCurve && !isLeftHandler) {
+        const xDiff = d3.event.x - array[pointIndex][0];
+        const yDiff = clamp(d3.event.y, array[0][1], Infinity) - array[pointIndex][1];
+
         array[pointIndex][0] = d3.event.x;
         array[pointIndex][1] = clamp(d3.event.y, array[0][1], Infinity);
+
+        if (array[pointIndex].firstMX) {
+          array[pointIndex].firstMX += xDiff;
+        }
+
+        if (array[pointIndex].secondMX) {
+          array[pointIndex].secondMX += xDiff;
+        }
+
+        if (array[pointIndex].firstMY) {
+          array[pointIndex].firstMY += yDiff;
+        }
+
+        if (array[pointIndex].secondMY) {
+          array[pointIndex].secondMY += yDiff;
+        }
       }
 
       if (!isMainCurve) {
@@ -1031,6 +1224,14 @@ upd = update;
         if (isRightHandler) {
           for (let k = 0; k < mainCurvePoints.length; k++) {
             mainCurvePoints[k][1] += d3.event.subject.point[1] - maxTop;
+
+            if (mainCurvePoints[k].firstMY) {
+              mainCurvePoints[k].firstMY += d3.event.subject.point[1] - maxTop;
+            }
+
+            if (mainCurvePoints[k].secondMY) {
+              mainCurvePoints[k].secondMY += d3.event.subject.point[1] - maxTop;
+            }
           }
 
           plusButton.style('top', `${ refsArray[refsArray.length - 1][3][1] + 30 }px`);
@@ -1337,6 +1538,10 @@ function Point(coord)
 
   this.drawSquare = function(ctx) {
     ctx.fillRect(xVal - RADIUS, yVal - RADIUS, RADIUS * 2, RADIUS * 2);
+
+    ctx.font = "10px Arial";
+    ctx
+      .fillText(`${ (xVal - config.canvasStartingPoint[0]).toFixed(0) } ${ (yVal - mainCurvePoints[0][1]).toFixed(0) }`, xVal + 5, yVal - 5);
   };
 
   this.computeSlope = function(pt) {
@@ -1423,8 +1628,13 @@ function ControlPoint(angle, magnitude, owner, isFirst, index) {
 
   function computeMagnitudeAngleFromOffset(xDelta, yDelta) {
     _magnitude = Math.sqrt(Math.pow(xDelta, 2) + Math.pow(yDelta, 2));
-console.log('_index ==>', _index)
-    console.log('isFirst ==>', isFirst)
+
+    mainCurvePoints[_index][`${ isFirst ? 'firstM' : 'secondM' }X`]
+      = mainCurvePoints[_index + ((isFirst || _index === mainCurvePoints.length - 1) ? 0 : 1)][0] + xDelta;
+
+    mainCurvePoints[_index][`${ isFirst ? 'firstM' : 'secondM' }Y`]
+      = mainCurvePoints[_index + ((isFirst || _index === mainCurvePoints.length - 1) ? 0 : 1)][1] + yDelta;
+
     mainCurvePoints[_index][isFirst ? 'firstM' : 'secondM'] = _magnitude;
     var tryAngle = Math.atan(yDelta /xDelta);
     if (!isNaN(tryAngle)) {
@@ -1436,7 +1646,7 @@ console.log('_index ==>', _index)
     if (isFirst) {
       mainCurvePoints[_index].angle = Math.PI + _angle;
     } else {
-      if (index !== mainCurvePoints.length - 1) {
+      if (_index !== mainCurvePoints.length - 1) {
         mainCurvePoints[_index + 1].angle = _angle;
       } else {
         mainCurvePoints[_index].angle = _angle;
